@@ -33,27 +33,50 @@ ScriptAlias  /db2json  /qsys.lib/db2json.lib/db2json.pgm
     Options +ExecCGI +Includes
 </Location>
 ```
-## Build Routine:
-1. Create a library on the IBM i server named DB2JSON
-2. Create a source file CRTSRCPFM DB2JSON/QCSRC RCDLEN(112)
-3. Create a source file CRTSRCPFM DB2JSON/H RCDLEN(112)
-4. Create a source file CRTSRCPFM DB2JSON/QCLSRC RCDLEN(112)
+
+## Build Routine
+1. Create a library on the IBM i server named `DB2JSON`.
+2. Create a source file: `CRTSRCPFM DB2JSON/QCSRC RCDLEN(112)`
+3. Create a source file: `CRTSRCPFM DB2JSON/H RCDLEN(112)`
+4. Create a source file: `CRTSRCPFM DB2JSON/QCLSRC RCDLEN(112)`
 5. Upload the following source members:
-    a.  db2json.cpp -> QCLSRC
-    b.  db2json.h -> H
-    c.  build.clle -> QCLSRC
+     - `db2json.cpp` → `QCSRC`
+     - `db2json.h` → `H`
+     - `build.clle` → `QCLSRC`
 6. Compile the `BUILD` CL program:
-`CRTBNDCL PGM(DB2JSON/BUILD) SRCFILE(DB2JSON/QCLSRC) SRCMBR(BUILD)`
-7. Then call the build routine to build the DB2JSON.PGM program.
-`CALL DB2JSON/BUILD`
-- At this point the DB2JSON program is created. If you would like to run a test via 5250 green screen (Command Entry) then compile the DEMO CL program and call it like this:
-`call db2json/demo`
-You can also run the dmeo program in debug mode to easily see what is going on (assuming you know C++). To do that just:
-`call db2json/debug`
+    ```
+    CRTBNDCL PGM(DB2JSON/BUILD) SRCFILE(DB2JSON/QCLSRC) SRCMBR(BUILD)
+    ```
+7. Call the build routine to create the `DB2JSON.PGM` program:
+    ```
+    CALL DB2JSON/BUILD
+    ```
+
+At this point, the `DB2JSON` program is created. If you would like to run a test via 5250 green screen (Command Entry), compile the `DEMO` CL program and call it like this:
+    ```
+    CALL DB2JSON/DEMO
+    ```
+You can also run the demo program in debug mode to easily see what is going on (assuming you know C++):
+    ```
+    CALL DB2JSON/DEBUG
+    ```
+
 
 ## Best Test Case
-The best way to try out the DB2JSON capabilities is with a web CGI request. The provided db2json.html file can be used along with the supporting javascript files and style sheet to run the demo app. The demo app is a IBM ACS RUN SQL Script style interface but completely web-driven. No java not compiled .exe just HTML/JS/CSS and the CGI program DB2JSON in the library DB2JSON. Be sure to add the above httpd.conf statement to allow it to work on your local web server.
-Db2JSON can be used on the web as a CGI program or from the command entry/CL program environment. You can use it in CL to create JSON files on the IFS directly from just about any SQL query statement (note: "query statements" means SELECT, VALUES, or common table expression (CTE)).
+
+The best way to try out DB2JSON is with a web CGI request. Use the provided `db2json.html` file along with the supporting JavaScript and CSS files to run the demo app. This demo web page offers a simple interface, similar to IBM ACS RUN SQL Scripts, but is entirely web-driven—no Java or PC programs required, just HTML, JS, CSS, and the host CGI program `DB2JSON` in the `DB2JSON` library.
+
+**To test via the web:**
+- Ensure your HTTP server is configured as described above.
+- Open `db2json.html` in your browser. You can run SQL queries (SELECT, VALUES, or CTE) and see the JSON output directly in the browser.
+
+**To test via CL/5250:**
+- Compile and call the `DEMO` CL program included in `QCLSRC`. This program calls `DB2JSON` from CL and writes the output of `QIWS/QCUSTCDT` to the IFS as JSON.
+- The demo program also writes a DSPF command to your job, so you can use F9 to retrieve that command and then instantly view your JSON result file.
+
+**Usage notes:**
+- DB2JSON can be used as a CGI program on the web or from a CL/Command Entry environment.
+- You can use it in CL program that creates JSON files on the IFS from almost any SQL query statement (SELECT, VALUES, or CTE), or send the JSON to the web via CGI output so your web pages can process the data from IBM i Db2 for i files.
 
 ## License
 MIT
