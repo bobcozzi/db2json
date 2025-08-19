@@ -612,8 +612,8 @@ int main(int argc, char *argv[])
                 // If you wish to increase either, be sure
                 // the CL variables you pass to this program
                 // are declared at that length or unpredicable results will occur.
-        constexpr size_t MAX_SQL_LEN = 640;  // Parm 1 SQL stmt, declared length
-        constexpr size_t MAX_PATH_LEN = 640; // Parm 2 IFS outfile path, declared length
+        static const size_t MAX_SQL_LEN  = 640;
+        static const size_t MAX_PATH_LEN = 640;
 
         if (argc >= 2)
         {
