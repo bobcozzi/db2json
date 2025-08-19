@@ -24,7 +24,6 @@ function initDb2jsonUI() {
     }
 
     // --- SQL History Dropdown ---
-    migrateHistoryKey();
     populateSqlHistoryDropdown();
     const dropdown = document.getElementById('sqlHistoryDropdown');
     if (dropdown) {
@@ -135,20 +134,20 @@ async function handleSqlSubmit(e) {
     const resultsDiv = document.getElementById('results');
     const copyTableBtn = document.getElementById('copyTableBtn');
 
-    errorDiv.textContent = '';
+    errorDiv.textContent = 'Running your request...';
+    errorDiv.style.background = 'none';
+    errorDiv.style.color = '#008800'; // dark 5250 green
     resultsDiv.innerHTML = '';
     copyTableBtn.classList.add('is-hidden');
 
     // Get the statement at the cursor
     const query = getSqlStatementAtCursor(input, cursor);
-    if (!query) {
-        errorDiv.textContent = 'No statement detected.';
-        return;
-    }
-
     try {
         const url = `/db2json?q=${encodeURIComponent(query)}&v=${Date.now()}`;
         const response = await fetch(url);
+    errorDiv.textContent = 'Loading resultSet...';
+    errorDiv.style.background = 'none';
+    errorDiv.style.color = '#008800'; // dark 5250 green
         let text = await response.text();
 
         if (text.startsWith('%')) text = text.substring(1);
@@ -165,12 +164,16 @@ async function handleSqlSubmit(e) {
         saveSqlToHistory(query);
         populateSqlHistoryDropdown();
 
-    renderTable(json, resultsDiv);
-    copyTableBtn.classList.remove('is-hidden');
+        renderTable(json, resultsDiv);
+    errorDiv.textContent = '';  // remove loading resultset message
+    errorDiv.style.background = 'none';
+    errorDiv.style.color = '#B71C1C'; // revert to red text
+        copyTableBtn.classList.remove('is-hidden');
         copyTableBtn.onclick = () => copyTableToClipboard(resultsDiv);
-
     } catch (err) {
         errorDiv.textContent = err.message || 'Error running query.';
+        errorDiv.style.background = 'none';
+        errorDiv.style.color = '#B71C1C'; // revert to red text
     }
 }
 
@@ -431,7 +434,7 @@ function copySqlInput() {
     menu.style.display = 'none';
     menu.style.minWidth = '160px';
     menu.style.fontFamily = 'inherit';
-    menu.style.fontSize = '1em';
+    menu.style.fontSize = '0.75em';
     menu.innerHTML = '<div style="padding: 6px 16px; cursor: pointer;" id="formatSqlMenuItem">Format SQL Statement</div>';
     document.body.appendChild(menu);
 
@@ -487,17 +490,6 @@ function copySqlInput() {
 })();
 
 
-function migrateHistoryKey() {
-    // Migrate any legacy key names to the new HISTORY_KEY
-    const legacyKeys = ['db2JSONsqlHistory', 'db2JSONsqlhistory', 'sqlHistoryDropdown'];
-    for (const k of legacyKeys) {
-        const val = localStorage.getItem(k);
-        if (val && !localStorage.getItem(HISTORY_KEY)) {
-            localStorage.setItem(HISTORY_KEY, val);
-        }
-        localStorage.removeItem(k);
-    }
-}
 
 function getSqlHistory() {
     const raw = localStorage.getItem(HISTORY_KEY);
@@ -572,12 +564,48 @@ function populateSqlHistoryDropdown() {
     defaultOpt.value = '';
     defaultOpt.textContent = '-- Previous SQL statements --';
     dropdown.appendChild(defaultOpt);
+    // Estimate max chars based on dropdown width and font size
+    let maxChars = 80;
+    if (dropdown) {
+        // Get computed font size in pixels
+        const style = window.getComputedStyle(dropdown);
+        const fontSizePx = parseFloat(style.fontSize) || 14;
+        // Estimate average char width (monospace: 0.6, proportional: 0.5)
+        const avgCharWidth = fontSizePx * 0.55;
+        // Use dropdown width (in px) to estimate
+        const widthPx = dropdown.offsetWidth || 400;
+        maxChars = Math.floor(widthPx / avgCharWidth);
+        if (maxChars < 20) maxChars = 20;
+        if (maxChars > 400) maxChars = 400;
+    }
     for (const stmt of history) {
         const opt = document.createElement('option');
-    opt.value = stmt;
-    const label = (stmt || '').replace(/\s+/g, ' ').trim();
-    opt.textContent = label.length > 80 ? label.slice(0, 77) + '...' : label;
+        opt.value = stmt;
+        const label = (stmt || '').replace(/\s+/g, ' ').trim();
+        if (label.length > maxChars) {
+            opt.textContent = label.slice(0, maxChars - 3) + '...';
+        } else {
+            opt.textContent = label;
+        }
         dropdown.appendChild(opt);
+    }
+
+    // --- Resize observer for dropdown ---
+    if (!dropdown._resizeObserverAttached) {
+        if (window.ResizeObserver) {
+            const ro = new ResizeObserver(() => {
+                // Rerender dropdown options on resize
+                populateSqlHistoryDropdown();
+            });
+            ro.observe(dropdown);
+            dropdown._resizeObserverAttached = true;
+        } else {
+            // Fallback: listen for window resize if ResizeObserver not available
+            if (!dropdown._windowResizeHandlerAttached) {
+                window.addEventListener('resize', populateSqlHistoryDropdown);
+                dropdown._windowResizeHandlerAttached = true;
+            }
+        }
     }
 }
 

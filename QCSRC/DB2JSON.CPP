@@ -377,7 +377,14 @@ void returnFailure(std::ostream& output, CXLate& toASCII, const char* message)
     logSQLMsg("Return Failure: %s", message);
     std::string msgtextStr = cvtToASCII(message, toASCII);
     bool  nodeWasOpen = closeJsonNode(output);
-    output << json->COMMA << json->LF;
+    if (!nodeWasOpen) {
+        output << json->LCURLY; // open root object if not already open
+        g_rootOpen = true;
+    }
+    else {
+        output << json->COMMA << json->LF;
+    }
+
     // output << json->LCURLY;
     output << json->LF
            << json->ERROR << json->COLON << json->LCURLY
@@ -386,10 +393,10 @@ void returnFailure(std::ostream& output, CXLate& toASCII, const char* message)
            << json->MSGTEXT << json->COLON
            << json->QUOTE << jsonEscape(msgtextStr) << json->QUOTE
            << json->RCURLY;
-    if (g_rootOpen) {
+   // if (g_rootOpen) {
         output << json->LF << json->RCURLY << json->LF;
         g_rootOpen = false;
-    }
+   // }
 }
 
 // Escape JSON special chars in strings
@@ -612,8 +619,8 @@ int main(int argc, char *argv[])
                 // If you wish to increase either, be sure
                 // the CL variables you pass to this program
                 // are declared at that length or unpredicable results will occur.
-        static const size_t MAX_SQL_LEN  = 640;
-        static const size_t MAX_PATH_LEN = 640;
+        static const size_t MAX_SQL_LEN  = 640; // Parm 1 SQL stmt, declared length
+        static const size_t MAX_PATH_LEN = 640; // Parm 2 IFS outfile path, declared length
 
         if (argc >= 2)
         {
