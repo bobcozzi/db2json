@@ -1,0 +1,12 @@
+ BUILD:      PGM
+             CRTCPPMOD  MODULE(DB2JSON/DB2JSON) +
+                          SRCFILE(DB2JSON/QCSRC) OUTPUT(*PRINT) +
+                          DBGVIEW(*SOURCE) LANGLVL(*EXTENDED0X) +
+                          REPLACE(*YES)
+             CRTCPPMOD  MODULE(DB2JSON/XLATE) SRCFILE(DB2JSON/QCSRC) +
+                          OUTPUT(*PRINT) DBGVIEW(*SOURCE) REPLACE(*YES)
+             CRTPGM     PGM(DB2JSON/DB2JSON) MODULE(DB2JSON/DB2JSON +
+                          DB2JSON/XLATE) +
+                          BNDSRVPGM((QHTTPSVR/QZHBCGI)) +
+                          ACTGRP(*NEW) OPTION(*DUPVAR)
+ ENDPGM:     ENDPGM

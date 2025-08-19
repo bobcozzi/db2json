@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "es2017",             // Output JavaScript version (modern enough for browsers)
+    "module": "ES6",             // Use native JavaScript modules
+    "moduleResolution": "node",  // Resolves modules like Node.js (good default)
+  // Compiled JS output directory removed; not needed for this project
+    "strict": true,              // Enables strict type checking (recommended)
+    "esModuleInterop": true,     // Helps with importing some modules, safe to keep
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["*.ts"],
+  "exclude": ["node_modules", "js", "css", "H", "QCLSRC", "QCSRC"]
+}
+

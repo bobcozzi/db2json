@@ -1,0 +1,41 @@
+{
+  "name": "db2json",
+  "version": "1.0.0",
+  "description": "Convert IBM i DB2 SQL query output to JSON format. Includes CGI, HTML, JS, and IBM i build scripts.",
+  "main": "js/db2json.js",
+  "scripts": {
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bobcozzi/db2json.git"
+  },
+  "keywords": [
+    "db2",
+    "json",
+    "database",
+    "converter",
+    "ibm",
+    "cgi",
+    "ibmi"
+  ],
+  "author": "Bob Cozzi <cozzi@rpgiv.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/bobcozzi/db2json/issues"
+  },
+  "homepage": "https://github.com/bobcozzi/db2json#readme",
+  "files": [
+    "H/",
+    "QCLSRC/",
+    "QCSRC/",
+    "css/",
+    "js/",
+    "db2json.html",
+    "readme.md",
+    "changelog.md"
+  ],
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

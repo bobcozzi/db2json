@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bob Cozzi's Db2JSON Test Composer using SQL</title>
+    <link id="db2JSON_maincss" rel="stylesheet" href="css/db2json.css">
+    <!-- Placeholders; src is assigned at the bottom with a ?v= parameter -->
+    <script id="db2JSON_sqlfmtjs"></script>
+    <script id="db2JSON_sqlhistjs"></script>
+
+</head>
+
+<body>
+    <h1>DB2JSON Query</h1>
+    <form id="sqlForm">
+        <div class="sql-label-row">
+            <label for="sqlInput">Type SQL or select from history:</label>
+            <button type="submit" class="run-sql-btn" title="Run the current SQL statement at the cursor">Run SQL</button>
+            <span class="label-divider" role="separator" aria-hidden="true">:</span>
+            <div class="history-actions" aria-label="SQL history actions">
+                <button id="editSqlHistoryBtn" type="button" class="link-btn" title="Open the History Editor to view/edit saved SQL statements">Edit History</button>
+                <button id="clearSqlHistoryBtn" type="button" class="link-btn danger" title="Clear all saved SQL statements from this browser">Clear History</button>
+            </div>
+        </div>
+        <div class="sqlInput-copy-wrapper">
+            <select id="sqlHistoryDropdown" title="SQL History"></select>
+            <div class="sql-textarea-row">
+                <div class="textarea-btn-container">
+                    <textarea id="sqlInput" name="sqlInput" rows="6" cols="80"></textarea>
+                    <button id="copySqlInputBtn" type="button" title="Copy your SQL stmt to the clipboard"
+                        class="copy-sql-btn" aria-label="Copy SQL to clipboard">
+                        <span class="copy-icon-wrapper">
+                            <svg class="copy-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"
+                                xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                                <rect x="5" y="3" width="11" height="14" rx="2" fill="#fff" stroke="#555"
+                                    stroke-width="1.5" />
+                                <rect x="2.5" y="6" width="11" height="11" rx="2" fill="#f5f5f5" stroke="#bbb"
+                                    stroke-width="1.2" />
+                            </svg>
+                            <span class="copy-checkmark-feedback"></span>
+                        </span>
+                        <span class="copy-sql-btn-label">Copy</span>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </form>
+
+<div class="results-area">
+    <div id="error"></div>
+    <div class="copy-table-btn-row">
+    <button id="copyTableBtn" type="button" class="copy-table-btn is-hidden"
+            title="Copy table for pasting into Excel or Sheets">Copy Table</button>
+    </div>
+    <div id="results"></div>
+</div>
+
+    <!-- History Edit Modal -->
+    <div id="historyModal" class="modal" aria-hidden="true" role="dialog" aria-labelledby="historyModalTitle">
+        <div class="modal-content">
+            <h3 id="historyModalTitle">Edit SQL History</h3>
+                                    <p class="modal-help">Type or paste statements. Separate statements with an unquoted semicolon (;) like in the SQL textarea. Newlines inside quotes are preserved.</p>
+                                    <textarea id="historyTextarea" rows="12" placeholder="Examples:
+            -- Single-line
+            SELECT * FROM QIWS.QCUSTCDT;
+
+            -- Multi-line (semicolon ends the statement)
+            WITH X AS (
+                SELECT *
+                FROM SYSIBM.SYSDUMMY1
+            );
+            SELECT CURRENT_DATE
+            FROM X;
+            "></textarea>
+            <div class="modal-actions">
+                <button id="historySaveBtn" type="button">Save</button>
+                <button id="historyCancelBtn" type="button">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- App script placeholder; src will be assigned at the bottom with ?v= -->
+    <script id="db2JSON_mainjs"></script>
+    <script>
+        // Place at bottom so DOM elements exist when assigning versioned URLs
+        // Dev: append ?v=Date.now() automatically
+        // Prod: omit ?v= to allow normal caching (or pass ?dev=1 to force busting)
+        const qs = location.search;
+        const isDev = /(?:^|[?&])(dev|cachebust|nocache)=1(?:&|$)/.test(qs) ||
+                      location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        const ver = isDev ? String(Date.now()) : null;
+        const withV = (path) => ver ? `${path}?v=${ver}` : path;
+
+        const mainCSS = document.getElementById('db2JSON_maincss');
+        const mainjs = document.getElementById('db2JSON_mainjs');
+        const fmtJS = document.getElementById('db2JSON_sqlfmtjs');
+        const histJS = document.getElementById('db2JSON_sqlhistjs');
+        if (mainCSS) mainCSS.href = withV('css/db2json.css');
+        if (fmtJS) fmtJS.src = withV('js/db2json_sqlFmt.js');
+        if (histJS) histJS.src = withV('js/db2json_sqlHist.js');
+        if (mainjs) mainjs.src = withV('js/db2json.js');
+    </script>
+
+</body>
+
+</html>

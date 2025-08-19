@@ -1,0 +1,18 @@
+ DEMO:       PGM
+             DCL        VAR(&USRPRF) TYPE(*CHAR) LEN(10)
+             DCL        VAR(&MYOUTPUT) TYPE(*CHAR) LEN(640)
+             DCL        VAR(&SQL)    TYPE(*CHAR) LEN(640)
+             DCL        VAR(&MSGKEY) TYPE(*CHAR) LEN(4)
+             RTVJOBA    USER(&USRPRF)
+             CHGVAR     VAR(&MYOUTPUT) VALUE('/home/' *TCAT &USRPRF +
+                          *TCAT '/test_DB2JSON.json')
+             CHGVAR     VAR(&SQL) VALUE('select * from qiws.qcustcdt')
+             /* Note: 3rd parm can be *REPLACE or -r to replace output file  */
+             CALL       PGM(DB2JSON/DB2JSON) PARM(&SQL &MYOUTPUT '*REPLACE')
+             SNDPGMMSG  MSG('DSPF ''' *CAT &MYOUTPUT *TCAT '''') +
+                          TOPGMQ(*EXT) MSGTYPE(*RQS) KEYVAR(&MSGKEY)
+             RCVMSG     PGMQ(*EXT) MSGTYPE(*RQS) MSGKEY(&MSGKEY) +
+                          RMV(*NO)
+             /* You can now use F9 to retrieve the DSPF ... command +
+             /* to view your output file */
+ ENDPGM:     ENDPGM
