@@ -1,3 +1,4 @@
+
 # db2json
 
 A tool to convert DB2 data to JSON format.
@@ -77,6 +78,17 @@ The best way to try out DB2JSON is with a web CGI request. Use the provided `db2
 **Usage notes:**
 - DB2JSON can be used as a CGI program on the web or from a CL/Command Entry environment.
 - You can use it in CL program that creates JSON files on the IFS from almost any SQL query statement (SELECT, VALUES, or CTE), or send the JSON to the web via CGI output so your web pages can process the data from IBM i Db2 for i files.
+
+## Compatibility
+
+**IBM i:**
+- Supported on IBM i (formerly AS/400, iSeries) systems running IBM i OS version V7R1 or later. (V7R3 or later recommnded) No PTFs or special options required—just a working DB2 for i and standard C/C++ compilers, and for web output the HTTP server powered by Apache.
+
+**PC/Mac/Linux:**
+- The example web UI (HTML/JS/CSS) is compatible with any contemporary PC operating system (Windows, macOS, Linux) and any modern web browser. No special requirements—just a standard web browser.
+
+This tool is designed for classic IBM i environments and modern desktop/server platforms alike. If you can run a browser and connect to an IBM i HTTP server, you are good to go.
+
 
 ## License
 MIT
