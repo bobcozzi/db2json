@@ -13,6 +13,10 @@ A tool to convert DB2 data to JSON format.
 2. Copy the .html, .css, and .js files to your own HTTP server location.
 3. launch the db2json.html page to run a test case.
 
+
+For a description of the JSON that is produced look here: [JSON Structure Documentation](jsondocs.md)
+
+
 ## HTTP Configuration
 - Add the following (customized to your shop) to your httpd.conf file of your web server.
 - Assume for example, you webserver is named "cozziweb". Then do the following:
