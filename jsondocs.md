@@ -90,28 +90,48 @@ The `data` node is an array of objects, each representing a row. Each object’s
 
 ## Node: `error` (Error Information)
 
-If an error occurs, the response will contain an `error` node instead of `attr`/`data`.
+If an error occurs, the response includes an `error` node. Always check for `error` first, before processing `attr` or `data`. If the failure happens before any rows are retrieved, only `error` is returned. If column metadata is known but the first row fetch fails, `error` may be returned alongside `attr`. Do not assume `data` is present when `error` exists.
+
+The `error` node contains the `sqlstate` and, when available, a human‑readable `msgtext`. For non‑SQL failures (for example, configuration, authority, or transport issues), `sqlstate` may be `"DB2JSON"` with details provided in `msgtext`.
 
 | Property    | Type   | Description |
 |-------------|--------|-------------|
 | `sqlstate`  | string | SQLSTATE or error code. |
 | `msgtext`   | string | Human-readable error message. |
 
-#### Example
+#### Example: error only
 ```json
-"error": {
-  "sqlstate": "22001",
-  "msgtext": "String data, right truncation."
+{
+  "error": {
+    "sqlstate": "22001",
+    "msgtext": "String data, right truncation."
+  }
+}
+```
+
+#### Example: error with attr present (file not found)
+```json
+{
+  "attr": [
+    { "name": "CUSTNO", "type": "CHAR", "length": 6, "decimals": 0, "allownull": false, "colhdr": "Customer Number" },
+    { "name": "BALANCE", "type": "DECIMAL", "length": 9, "decimals": 2, "allownull": true, "colhdr": "Balance Due" }
+  ],
+  "error": {
+    "sqlstate": "42704",
+    "msgtext": "QCUSTCDT in COZTOOLS type *FILE not found."
+  }
 }
 ```
 
 ---
-
+The example `db2json.html` file and its related js (javascript) illustrates how to handle these error results in code.
 
 ## Notes for Developers
 
-- All node and property names are uppercase by convention, but may appear in lower or mixed case depending on the DB2 environment and query.
-- Numeric values may be returned as numbers or strings, depending on DB2 and CGI serialization.
+- Top-level node names are lowercase: `attr`, `data`, and `error`.
+- Column metadata property names in `attr` are lowercase: `name`, `type`, `length`, `decimals`, `allownull`, `colhdr`.
+- Row objects in `data` use keys that mirror the Db2 column names. By default Db2 returns unquoted identifiers in UPPERCASE; if you use quoted identifiers or `AS` aliases, the case will match what you specify. Do not force-case these keys—preserve them as returned.
+- Numeric values may be returned as numbers or strings, depending on Db2 and CGI serialization.
 - Always check for the presence of the `error` node before processing `attr`/`data`.
 - The structure is designed for easy mapping to classic RPG, COBOL, or C data structures, as well as modern JavaScript/TypeScript objects.
 - If you see only an `error` node, no result set was produced.
