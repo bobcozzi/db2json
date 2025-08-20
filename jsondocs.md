@@ -124,7 +124,7 @@ The `error` node contains the `sqlstate` and, when available, a human‑readable
 ```
 
 ---
-The example `db2json.html` file and its related js (javascript) illustrates how to handle these error results in code.
+The example `db2json.html` file and its related JavaScript files illustrate how to handle these error responses in code.
 
 ## Notes for Developers
 
@@ -138,7 +138,7 @@ The example `db2json.html` file and its related js (javascript) illustrates how 
 
 ---
 
-## Sample Full Response
+## Sample Full, Error-Free Response
 ```json
 {
   "attr": [
