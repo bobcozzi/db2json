@@ -66,7 +66,6 @@ You can also run the demo program in debug mode to easily see what is going on (
     CALL DB2JSON/DEBUG
     ```
 
-
 ## Best Test Case
 
 The best way to try out DB2JSON is with a web CGI request. Use the provided `db2json.html` file along with the supporting JavaScript and CSS files to run the demo app. This demo web page offers a simple interface, similar to IBM ACS RUN SQL Scripts, but is entirely web-driven—no Java or PC programs required, just HTML, JS, CSS, and the host CGI program `DB2JSON` in the `DB2JSON` library.
@@ -82,6 +81,59 @@ The best way to try out DB2JSON is with a web CGI request. Use the provided `db2
 **Usage notes:**
 - DB2JSON can be used as a CGI program on the web or from a CL/Command Entry environment.
 - You can use it in CL program that creates JSON files on the IFS from almost any SQL query statement (SELECT, VALUES, or CTE), or send the JSON to the web via CGI output so your web pages can process the data from IBM i Db2 for i files.
+
+## Call-level usage (non-CGI)
+
+When the CGI environment is not detected, DB2JSON runs in call-level mode and writes the JSON output to an IFS file.
+
+Example CL call:
+
+```
+CALL       PGM(DB2JSON/DB2JSON) PARM(&SQL &MYOUTPUT '*REPLACE')
+```
+
+To run DB2JSON in batch or interactively, you need to provide up to 3 parameters. The first two parameters are required.  Note that in CGI/Web invocations of the program, no parameters are passed since communications is done via the CGI environment's stdin, stdout and environment variables.
+
+Parameters (in order):
+
+1) SQL statement to run
+- A character string containing a valid SQL statement (SELECT, VALUES, CTE, etc.).
+For call-level interfaces this is a TYPE(*CHAR) LEN(640) parameter (in CL) or a CHAR(640) CONST parameter in RPG IV. Note in CGI/Web there is no practical limit to the SQL statement length. You can increase this for your shop by adjusting the value of the `MAX_SQL_LEN` variable in the `DB2JSON.CPP` source member before creating the *PGM object.
+
+2) IFS output file
+- Fully qualified IFS path to the JSON output file (for example: '/tmp/outdata.json').
+For call-level interfaces this is a TYPE(*CHAR) LEN(640) parameter (in CL) or a CHAR(640) CONST parameter in RPG IV. Note in CGI/Web This parameter does not apply. You can increase this for your shop by adjusting the value of the `MAX_PATH_LEN` variable in the `DB2JSON.CPP` source member before creating the *PGM object.
+
+3) Replace/Append option (optional) DEFAUT(*APPEND/*ADD)
+- Up to the first two characters of the paramete value are used; case-insensitive.
+- If the first character is `*` or `-` then the 2nd character must contain the replace/append flag. If the first character is not `*` or `-` then the 1st character must contain the replace/append flag.
+- The replace/append flag must be:
+- For REPLACE the flag can be `r`, `t`, or `y`.
+- For APPEND (add) the flag can be `a`, `n` or unspecified. This is the default.
+If the file does not exist, it is created with CCSID(1208) UTF‑8.
+
+## Calling from RPG IV
+Here is the prototype and example calling convension to call DB2JSON from RPG IV:
+```
+  dcl-pr db2json extpgm('DB2JSON/DB2JSON');
+     sqlStmt char(640) Const;
+     ifs_OutFile char(640) Const;
+     replace  char(16) Const OPTIONS(*NOPASS);
+  end-pr;
+
+  dcl-s mySQL varchar(640);
+  dcl-s ifsFile varchar(640);
+
+   // Call it with hard-coded/literals:
+  db2Json('Select * from qiws.qcustcdt' :
+          '/home/cozzi/custmast.json' :
+          '-r');
+
+     // Or call it with variables
+   mySQL = 'select * from qiws.qcustcdt ORDER by BALDUE DESC');
+   ifsFile = '/home/CustBalances.json');
+  db2Json( mySQL : ifsFile : '*REPLACE');
+```
 
 ## Compatibility
 

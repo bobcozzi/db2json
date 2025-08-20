@@ -154,4 +154,16 @@ The example `db2json.html` file and its related JavaScript files illustrate how 
 
 ---
 
-The DB2JSON.PGM on IBM generates JSON very fast once the SQL statement completes and returns it to standard output (stdout or std::cout) for web use. It also optionally writes the json to the IFS in UTF-8 (CCSID: 1208) format.
+## SQL Data Types
+All SQL Data Types are returned verbatim except for `NUMERIC`. `NUMERIC` data-type is translated to the RPG IV convention of `ZONED` to differenciate it from `DEC` (packed decimal). As with `DECIMAL`, the short form of INTEGER is used. Here's a quick reference:
+
++------------+----------+
+| SQL        | DB2JSON  |
+| Data Type  | `type`   |
+|------------|----------|
+| NUMERIC    | ZONED    |
+| DECIMAL    | DEC      |
+| INTEGER    | INT      |
++------------+----------+
+
+The DB2JSON.PGM on IBM generates JSON fast once the SQL statement completes. It returns that json to standard output (stdout or std::cout) for web use, or writes it out to a file on the IFS UTF-8 (CCSID: 1208) format.
