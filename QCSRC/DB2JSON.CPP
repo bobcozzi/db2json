@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <cctype>
 
+#include <unistd.h>
 #include <qusec.h>     /* For Qus_EC_t error code structure */
 #include <fcntl.h>
 #include <ifs.h>
@@ -34,15 +35,15 @@
 #include <langinfo.h>
 #include <locale.h>
 #include <nl_types.h>
+
 #include <cvthc.mih>
 #include <cvtch.mih>
-
 #include <RETTHCNT.mih>
+
 #include <sqlcli.h> // IBM i CLI header
 
 #include <db2json/h/xlate>
 
-#include <unistd.h>
 
 using namespace std;
 
