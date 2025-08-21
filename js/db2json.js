@@ -9,6 +9,7 @@ function initDb2jsonUI() {
     const sqlForm = document.getElementById('sqlForm');
     const copySqlInputBtn = document.getElementById('copySqlInputBtn');
     const textarea = document.getElementById('sqlInput');
+    const submitModeSel = document.getElementById('submitMode');
 
     // Hide copy table button initially
     if (copyTableBtn) copyTableBtn.classList.add('is-hidden');
@@ -16,6 +17,26 @@ function initDb2jsonUI() {
     // Register event handlers
     if (sqlForm) sqlForm.addEventListener('submit', handleSqlSubmit);
     if (copySqlInputBtn) copySqlInputBtn.addEventListener('click', copySqlInput);
+    // Optional: adjust form attributes for visibility/testing (fetch ignores these but helps dev tools)
+    if (submitModeSel) {
+        submitModeSel.addEventListener('change', () => {
+            const form = document.getElementById('sqlForm');
+            if (!form) return;
+            const mode = submitModeSel.value || 'GET';
+            if (mode === 'GET') {
+                form.method = 'get';
+                form.enctype = 'application/x-www-form-urlencoded';
+            } else if (mode === 'POST_URLENC') {
+                form.method = 'post';
+                form.enctype = 'application/x-www-form-urlencoded';
+            } else {
+                form.method = 'post';
+                form.enctype = 'multipart/form-data';
+            }
+        });
+        // initialize once
+        submitModeSel.dispatchEvent(new Event('change'));
+    }
 
     // Sticky tfoot/table resize
     const resultsDiv = document.getElementById('results');
@@ -143,8 +164,26 @@ async function handleSqlSubmit(e) {
     // Get the statement at the cursor
     const query = getSqlStatementAtCursor(input, cursor);
     try {
-        const url = `/db2json?q=${encodeURIComponent(query)}&v=${Date.now()}`;
-        const response = await fetch(url);
+        const submitMode = (document.getElementById('submitMode')?.value) || 'GET';
+        let response;
+        if (submitMode === 'GET') {
+            const url = `/db2json?q=${encodeURIComponent(query)}&v=${Date.now()}`;
+            response = await fetch(url);
+        } else if (submitMode === 'POST_URLENC') {
+            const body = `q=${encodeURIComponent(query)}`;
+            response = await fetch('/db2json', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                body
+            });
+        } else {
+            const fd = new FormData();
+            fd.append('q', query);
+            response = await fetch('/db2json', {
+                method: 'POST',
+                body: fd
+            });
+        }
     errorDiv.textContent = 'Loading resultSet...';
     errorDiv.style.background = 'none';
     errorDiv.style.color = '#008800'; // dark 5250 green
@@ -540,30 +579,19 @@ function populateSqlHistoryDropdown() {
     if (!dropdown) return;
     dropdown.innerHTML = '';
     const history = getSqlHistory();
-    if (history.length === 0) {
-        // Hide dropdown when no history
-        dropdown.style.display = 'none';
-        // Keep actions visible: enable Edit, disable Clear
-        if (actions) {
-            const edit = actions.querySelector('#editSqlHistoryBtn');
-            const clear = actions.querySelector('#clearSqlHistoryBtn');
-            if (edit) edit.disabled = false;
-            if (clear) clear.disabled = true;
-        }
-        return;
-    }
-    // Show dropdown when there is history
+    // Always show dropdown; when empty, show a disabled placeholder
     dropdown.style.display = '';
     if (actions) {
         const edit = actions.querySelector('#editSqlHistoryBtn');
         const clear = actions.querySelector('#clearSqlHistoryBtn');
         if (edit) edit.disabled = false;
-        if (clear) clear.disabled = false;
+        if (clear) clear.disabled = history.length === 0;
     }
     const defaultOpt = document.createElement('option');
     defaultOpt.value = '';
-    defaultOpt.textContent = '-- Previous SQL statements --';
+    defaultOpt.textContent = history.length ? '-- Previous SQL statements --' : '-- No history yet --';
     dropdown.appendChild(defaultOpt);
+    dropdown.disabled = history.length === 0;
     // Estimate max chars based on dropdown width and font size
     let maxChars = 80;
     if (dropdown) {
@@ -578,16 +606,18 @@ function populateSqlHistoryDropdown() {
         if (maxChars < 20) maxChars = 20;
         if (maxChars > 400) maxChars = 400;
     }
-    for (const stmt of history) {
-        const opt = document.createElement('option');
-        opt.value = stmt;
-        const label = (stmt || '').replace(/\s+/g, ' ').trim();
-        if (label.length > maxChars) {
-            opt.textContent = label.slice(0, maxChars - 3) + '...';
-        } else {
-            opt.textContent = label;
+    if (history.length) {
+        for (const stmt of history) {
+            const opt = document.createElement('option');
+            opt.value = stmt;
+            const label = (stmt || '').replace(/\s+/g, ' ').trim();
+            if (label.length > maxChars) {
+                opt.textContent = label.slice(0, maxChars - 3) + '...';
+            } else {
+                opt.textContent = label;
+            }
+            dropdown.appendChild(opt);
         }
-        dropdown.appendChild(opt);
     }
 
     // --- Resize observer for dropdown ---

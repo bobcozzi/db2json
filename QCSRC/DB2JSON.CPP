@@ -11,49 +11,38 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <iostream>
 #include <fstream>
-#include <iomanip>
 #include <sstream>
-#include <string>
 #include <vector>
+#include <algorithm>
+#include <cctype>
 
-
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <QZHBCGI.h>   /* For QtmhGetEnv API */
 #include <qusec.h>     /* For Qus_EC_t error code structure */
-
 #include <fcntl.h>
 #include <ifs.h>
-
 #include <except.h>
-#include <qlzareq.h>
-#include <qlzarls.h>
-#include <qlzartv.h>
-#include <qp0ztrc.h>
-#include <qp0z1170.h>
-#include <leod.h>
 #include <leenv.h>
 #include <lecond.h>
-#include <qusec.h>
-
+#include <qp0z1170.h>
+#include <QP0ZTRC.h>
 #include <qmhmovpm.h>
 #include <qmhrsnem.h>
-#include <qmhchgem.h>
 #include <QWTRTVTA.h>
-
+#include <QTMHCGI.h>
 #include <langinfo.h>
 #include <locale.h>
 #include <nl_types.h>
+#include <cvthc.mih>
+#include <cvtch.mih>
 
 #include <RETTHCNT.mih>
 #include <sqlcli.h> // IBM i CLI header
 
 #include <db2json/h/xlate>
 
-#include <unistd.h> // for write()
+#include <unistd.h>
 
 using namespace std;
 
@@ -75,13 +64,7 @@ using namespace std;
 // this program's iconv routines, then define TOASCII directly
 // without the preprocessor conditional wrapper.
 // But remember, in that context, the HTTP Content-type header
-// but be sent as EBCDIC not ASCII while the JSON data itself
-// does need to be converted to ASCII.
-// Not there is also a runtime check for this feature later on.
-
-#if (__OS400_TGTVRM__ <= 730)
-#define TOASCII
-#endif
+// must be sent as EBCDIC not ASCII while the JSON data itself
 
 int globalError = 0;
 
@@ -91,7 +74,6 @@ void excp_monitor(_INTRPT_Hndlr_Parms_T * __ptr128 exp_info)
      char       msgTypes[4][10];
      int        msgTypeCount;
      Qus_EC_t   ec;
-
        // Allow this routine to be call recursively, up to twice, then bail out
        //   Pass 1, globalError = 0  exit -1
        //   Pass 2, globalError = -1 exit -99
@@ -263,12 +245,39 @@ const json_symbols_t json_job = {
     "\"DB2JSON\""
 };
 
-#define ifCheckError(_d, _x, _rc, _h, _id, _t) \
-      if (checkError(_d, _x, _rc, _h, _id, _t)==1) return 0;
+#pragma convert(1208)
+const char* ASCII_LF = "\n";
+const char* ASCII_CR = "\r";
+const char* ASCII_AMP = "&";
+const char* ASCII_EQ  = "=";
+const char* ASCII_PCT = "%";
+const char* ASCII_PLUS = "+";
+const char* ASCII_q = "q";
+const char* ASCII_Q = "Q";
+const char  ASCII_SPACE = ' ';
+const char* MP_NAME = "name=";
+const char* MP_FILENAME = "filename=";
+const char* MP_DASHDASH = "--";
+const char* MP_BOUNDARY = "boundary=";
+#pragma convert(0)
+
+// EBCDIC equivalents for GET parsing (QUERY_STRING is typically EBCDIC on IBM i)
+const char* EBCDIC_LF   = "\n";
+const char* EBCDIC_CR   = "\r";
+const char* EBCDIC_AMP  = "&";
+const char* EBCDIC_EQ   = "=";
+const char* EBCDIC_PCT  = "%";
+const char* EBCDIC_PLUS = "+";
+const char* EBCDIC_q    = "q";
+const char* EBCDIC_Q    = "Q";
+const char  EBCDIC_SPACE = ' ';
+
+#define ifCheckError(_d, _rc, _h, _id, _t) \
+      if (checkError(_d, _rc, _h, _id, _t)==1) return 0;
 
 
 // Runtime pointer to selected JSON symbol set
-const json_symbols_t* json = &json_ascii; // Will be assigned to &json_ascii_instance or &json_job_instance at runtime
+const json_symbols_t* json = &json_ascii;
 
 
 // JSON output state flags
@@ -277,12 +286,22 @@ bool g_dataOpen = false;
 
 
 // Forward declarations
+const char* cgi_getenv(const char* name);
 std::string jsonEscape(const std::string &input);
 std::string base64Encode(const unsigned char *data, size_t len);
-std::string cvtToASCII(const std::string& src, CXLate& toASCII);
-
-bool openIFSFile(std::ofstream& ofs, const char* szFile, const char* fileOpt, int ccsid = 1208);
+std::string cvtToASCII(const std::string& src);
+std::string cvtToEBCDIC(const std::string& src);
 const char* sqlTypeToJSONText(int sqlType);
+bool openIFSFile(std::ofstream& ofs, const char* szFile, const char* fileOpt, int ccsid = 1208);
+
+// Input helpers and URL-decoders
+std::string urlDecodeASCII(const std::string& str);
+std::string urlDecodeEBCDIC(const std::string& str);
+bool readRequestBody(int len, std::string& body);
+bool readGET(std::string& outSql);
+bool readPOST_XForm(const std::string& body, std::string& outSql);
+bool readPOST_Multipart(const std::string& ctype, const std::string& body, std::string& outSql);
+
 
 // Log a message to the IBM i joblog using Qp0zLprintf, printf-style
 
@@ -316,6 +335,8 @@ struct Column
 // Track if root object is open
 bool g_rootOpen = false;
 char g_fileNameBuffer[4096];  // Global file name buffer
+CXLate toASCII;
+CXLate toEBCDIC;
 
 // Helper to close open JSON arrays/objects before error output
 // Returns true if root was open, false if not
@@ -335,7 +356,7 @@ bool closeJsonNode(std::ostream& output) {
 }
 
 // Helper function to check and print CLI errors, and emit JSON error node
-int checkError(std::ostream& output, CXLate& toASCII, SQLRETURN rc, SQLHANDLE handle, SQLSMALLINT type, const char *msg)
+int checkError(std::ostream& output, SQLRETURN rc, SQLHANDLE handle, SQLSMALLINT type, const char *msg)
 {
     if (rc == SQL_SUCCESS || rc == SQL_SUCCESS_WITH_INFO)
     {
@@ -347,8 +368,8 @@ int checkError(std::ostream& output, CXLate& toASCII, SQLRETURN rc, SQLHANDLE ha
     SQLSMALLINT textLen = 0;
     SQLGetDiagRec(type, handle, 1, sqlstate, &nativeError, message, sizeof(message)-1, &textLen);
     message[textLen] = 0x00;
-    std::string sqlstateStr = cvtToASCII(reinterpret_cast<const char*>(sqlstate), toASCII);
-    std::string msgtextStr = cvtToASCII(reinterpret_cast<const char*>(message), toASCII);
+    std::string sqlstateStr = cvtToASCII(reinterpret_cast<const char*>(sqlstate));
+    std::string msgtextStr = cvtToASCII(reinterpret_cast<const char*>(message));
     bool  rootWasOpen = closeJsonNode(output);
     logSQLMsg("Error: %5s, %s",sqlstate, message);
     if (!rootWasOpen) {
@@ -371,11 +392,11 @@ int checkError(std::ostream& output, CXLate& toASCII, SQLRETURN rc, SQLHANDLE ha
     return 1;
 }
 
-void returnFailure(std::ostream& output, CXLate& toASCII, const char* message)
+void returnFailure(std::ostream& output, const char* message)
 {
     // Output error JSON with sqlstate 'DB2JSON' and msgtext from message
     logSQLMsg("Return Failure: %s", message);
-    std::string msgtextStr = cvtToASCII(message, toASCII);
+    std::string msgtextStr = cvtToASCII(message);
     bool  nodeWasOpen = closeJsonNode(output);
     if (!nodeWasOpen) {
         output << json->LCURLY; // open root object if not already open
@@ -443,7 +464,7 @@ std::string base64Encode(const unsigned char *data, size_t len)
 }
 
 // Convert a string to ASCII using the provided CXLate object
-std::string cvtToASCII(const std::string& src, CXLate& toASCII) {
+std::string cvtToASCII(const std::string& src) {
     // if TO_ASCII is set off, simple return the EBCDIC JSON text to caller.
     if (src.empty() || TO_ASCII == '0') return src;
     std::string out;
@@ -456,34 +477,340 @@ std::string cvtToASCII(const std::string& src, CXLate& toASCII) {
     return out;
 }
 
-
-// Helper to get the value of a query parameter
-std::string getQueryParm(const std::string& query, const std::string& key) {
-    std::string search = key + "=";
-    size_t start = query.find(search);
-    if (start == std::string::npos) return "";
-    start += search.length();
-    size_t end = query.find('&', start);
-    return query.substr(start, end - start);
+// Convert a string to ASCII using the provided CXLate object
+std::string cvtToEBCDIC(const std::string& src) {
+    // if TO_ASCII is set off, simple return the EBCDIC JSON text to caller.
+    if (src.empty()) return src;
+    std::string out;
+    out.resize(src.size() * 4); // plenty of space for multibyte
+    int len = toEBCDIC.convert(src.c_str(), src.size(), &out[0], out.size());
+    if (len < 0) {
+        return src;
+    }
+    out.resize(len);
+    return out;
 }
 
-std::string urlDecode(const std::string& str) {
+
+// Helper to get the value of a query parameter (EBCDIC-aware; no quoted ASCII)
+std::string getQueryParm(const std::string& query, const std::string& key) {
+    if (query.empty() || key.empty()) return "";
+    size_t pos = 0;
+    while (pos < query.size()) {
+        // find token end at EBCDIC '&'
+        size_t tokenEnd = pos;
+        while (tokenEnd < query.size() && (unsigned char)query[tokenEnd] != EBCDIC_AMP[0]) ++tokenEnd;
+        // find EBCDIC '=' within token
+        size_t eq = pos;
+        while (eq < tokenEnd && (unsigned char)query[eq] != EBCDIC_EQ[0]) ++eq;
+        if (eq < tokenEnd) {
+            // compare key
+            if (key.size() == 1) {
+                if (pos + 1 == eq) {
+                    unsigned char k = (unsigned char)query[pos];
+                    if (k == (unsigned char)key[0]) {
+                        return std::string(query.begin() + eq + 1, query.begin() + tokenEnd);
+                    }
+                }
+            } else if ((eq - pos) == key.size()) {
+                if (memcmp(&query[pos], key.data(), key.size()) == 0) {
+                    return std::string(query.begin() + eq + 1, query.begin() + tokenEnd);
+                }
+            }
+        }
+        if (tokenEnd >= query.size()) break;
+        pos = tokenEnd + 1;
+    }
+    return "";
+}
+
+// Ensure ASCII semantics for character literals within urlDecodeASCII
+
+std::string urlDecodeASCII(const std::string& str) {
     std::string result;
-    char ch;
-    int i, ii;
-    for (i = 0; i < str.length(); i++) {
-        if (str[i] == '%') {
-            sscanf(str.substr(i + 1, 2).c_str(), "%x", &ii);
-            ch = static_cast<char>(ii);
-            result += ch;
-            i = i + 2;
-        } else if (str[i] == '+') {
+    for (size_t i = 0; i < str.length(); ++i) {
+        unsigned char c = static_cast<unsigned char>(str[i]);
+        if (c == ASCII_PLUS[0]) {       // '+'
             result += ' ';
+        } else if (c == ASCII_PCT[0]) { // '%'
+            if (i + 2 < str.length()) {
+                char outByte = 0;
+                // Convert the two ASCII hex digits to a single byte via MI
+                cvtch(&outByte, &str[i + 1], 2);
+                result += outByte;
+                i += 2; // skip the two hex digits
+            } else {
+                // Trailing '%', keep as-is
+                result += ASCII_PCT[0];
+            }
         } else {
-            result += str[i];
+            result += (char)c;
         }
     }
     return result;
+}
+
+// EBCDIC urlDecode for QUERY_STRING and other EBCDIC-provided inputs
+// Use MI instruction cvtch to convert 2 hex chars to a single byte
+std::string urlDecodeEBCDIC(const std::string& str) {
+    std::string result;
+    char theHex[3];
+    for (size_t i = 0; i < str.length(); ++i) {
+        unsigned char c = static_cast<unsigned char>(str[i]);
+        if (c == EBCDIC_PLUS[0]) {       // '+' in EBCDIC
+            result += ' ';
+        } else if (c == EBCDIC_PCT[0]) { // '%' in EBCDIC
+            if (i + 2 < str.length()) {
+                char outByte = 0;
+                // Convert two EBCDIC hex chars to one ASCII byte
+                memcpy(theHex, &str[i], 3);
+                cvtch(&outByte, &str[i + 1], 2);
+                // Map the ASCII byte to EBCDIC before appending
+                if ((unsigned char)outByte == ASCII_SPACE) {
+                    // ASCII space -> EBCDIC space (0x40)
+                    result += (char)EBCDIC_SPACE;
+                } else {
+                    std::string one(1, outByte);
+                    //std::string eb = cvtToEBCDIC(one);
+                    result += (char) outByte;
+                    // if (eb.size() == 1) result += eb[0]; else result += outByte;
+                }
+                i += 2; // skip the two hex digits
+            } else {
+                // Trailing '%', keep as-is
+                result += (char)c;
+            }
+        } else {
+            result += (char)c;
+        }
+    }
+    return result;
+}
+
+
+// Retrieve the 'q' CGI variable from GET or POST and URL-decode it.
+// Returns true if a non-empty value was found.
+bool getCGIInput(std::string& outSql)
+{
+    outSql.clear();
+    const char* pMethod = cgi_getenv("REQUEST_METHOD");
+    const char* pType   = cgi_getenv("CONTENT_TYPE");
+    const char* pLen    = cgi_getenv("CONTENT_LENGTH");
+    std::string method  = pMethod ? pMethod : "";
+    std::string ctype   = pType ? pType : "";
+    int len             = pLen ? atoi(pLen) : 0;
+
+    // Normalize method case minimally
+    if (!method.empty() && (method == "GET" || method == "get")) {
+        return readGET(outSql);
+    }
+
+    if (!method.empty() && (method == "POST" || method == "post")) {
+        std::string body;
+        if (!readRequestBody(len, body)) return false;
+        if (!ctype.empty() && ctype.find("multipart/form-data") == 0) {
+            return readPOST_Multipart(ctype, body, outSql);
+        }
+        return readPOST_XForm(body, outSql);
+    }
+
+    return false;
+}
+
+// Read CONTENT_LENGTH bytes from stdin into body
+bool readRequestBody(int len, std::string& body) {
+    if (len <= 0) return false;
+    body.clear();
+    body.resize(static_cast<size_t>(len));
+    size_t total = 0;
+    while (total < static_cast<size_t>(len) && std::cin.good()) {
+        std::cin.read(&body[total], static_cast<std::streamsize>(len - total));
+        std::streamsize got = std::cin.gcount();
+        if (got <= 0) break;
+        total += static_cast<size_t>(got);
+    }
+    if (total < body.size()) body.resize(total);
+    logSQLMsg("POST len=%d", (int)body.size());
+    // Log first 200 bytes of POST body for debugging
+    std::string bodyPreview = body.substr(0, std::min<size_t>(body.size(), 200));
+    for (size_t i = 0; i < bodyPreview.size(); ++i) {
+        if ((unsigned char)bodyPreview[i] < 32 || (unsigned char)bodyPreview[i] > 126) bodyPreview[i] = '.';
+    }
+    logSQLMsg("POST body  ASCII: %.200s", bodyPreview.c_str());
+    logSQLMsg("POST body EBCDIC: %.200s", cvtToEBCDIC(bodyPreview).c_str());
+    return !body.empty();
+}
+
+// GET: QUERY_STRING comes in EBCDIC on IBM i; parse with EBCDIC semantics and decode with urlDecodeEBCDIC
+bool readGET(std::string& outSql) {
+    const char* qs = cgi_getenv("QUERY_STRING");
+    std::string query = qs ? qs : "";
+    if (query.empty()) return false;
+    // Simple key search using EBCDIC-coded literals (avoid quoted ASCII)
+    std::string keyQ(1, EBCDIC_q[0]);
+    std::string qRaw = getQueryParm(query, keyQ);
+    outSql = urlDecodeEBCDIC(qRaw);
+    logSQLMsg("GET q length=%d", (int)outSql.size());
+    return !outSql.empty();
+}
+
+// POST: application/x-www-form-urlencoded; treat as ASCII and decode via urlDecodeASCII
+bool readPOST_XForm(const std::string& body, std::string& outSql) {
+    outSql.clear();
+    std::string qRaw;
+    bool asciiKey = false;
+    bool ebcKey = false;
+    size_t pos = 0;
+    const unsigned char AMP_ASC = ASCII_AMP[0];
+    const unsigned char EQ_ASC  = ASCII_EQ[0];
+    const unsigned char AMP_EBC = '&';   // EBCDIC '&' literal
+    const unsigned char EQ_EBC  = '=';   // EBCDIC '=' literal
+    const unsigned char q_ASC   = ASCII_q[0];
+    const unsigned char Q_ASC   = ASCII_Q[0];
+    const unsigned char q_EBC   = 'q';   // EBCDIC 'q'
+    const unsigned char Q_EBC   = 'Q';   // EBCDIC 'Q'
+
+    while (pos < body.size()) {
+        // Find token end at '&' (ASCII or EBCDIC)
+        size_t tokenEnd = pos;
+        while (tokenEnd < body.size()) {
+            unsigned char b = (unsigned char)body[tokenEnd];
+            if (b == AMP_ASC || b == AMP_EBC) break;
+            ++tokenEnd;
+        }
+        // Find '=' inside token (ASCII or EBCDIC)
+        size_t eq = pos;
+        while (eq < tokenEnd) {
+            unsigned char b = (unsigned char)body[eq];
+            if (b == EQ_ASC || b == EQ_EBC) { break; }
+            ++eq;
+        }
+        if (eq < tokenEnd) {
+            size_t keyStart = pos;
+            size_t keyEnd = eq;
+            size_t valStart = eq + 1;
+            size_t valEnd = tokenEnd;
+            if (keyEnd == keyStart + 1) {
+                unsigned char k = (unsigned char)body[keyStart];
+                asciiKey = (k == q_ASC || k == Q_ASC);
+                ebcKey   = (k == q_EBC || k == Q_EBC);
+                if (asciiKey || ebcKey) {
+                    qRaw.assign(body.begin() + valStart, body.begin() + valEnd);
+                    break;
+                }
+            }
+        }
+        if (tokenEnd >= body.size()) break;
+        pos = tokenEnd + 1; // move past '&'
+    }
+    if (qRaw.empty()) return false;
+    if (asciiKey && !ebcKey) outSql = urlDecodeASCII(qRaw);
+    else if (ebcKey && !asciiKey) outSql = urlDecodeEBCDIC(qRaw);
+    else {
+        // Fallback: try ASCII first, then EBCDIC
+        std::string a = urlDecodeASCII(qRaw);
+        std::string e = urlDecodeEBCDIC(qRaw);
+        outSql = !a.empty() ? a : e;
+    }
+    logSQLMsg("urlencoded q length=%d", (int)outSql.size());
+    return !outSql.empty();
+}
+
+// POST: multipart/form-data parsing in ASCII (boundary, headers, CR/LF)
+bool readPOST_Multipart(const std::string& ctype, const std::string& body, std::string& outSql) {
+    outSql.clear();
+    // Extract boundary from content type
+    std::string boundary;
+    size_t bpos = ctype.find(MP_BOUNDARY);
+    if (bpos != std::string::npos) {
+        bpos += 9; // skip 'boundary='
+        if (bpos < ctype.size() && (ctype[bpos] == '"' || ctype[bpos] == '\'')) {
+            char q = ctype[bpos++];
+            size_t endq = ctype.find(q, bpos);
+            boundary = (endq != std::string::npos) ? ctype.substr(bpos, endq - bpos) : ctype.substr(bpos);
+        } else {
+            size_t endb = ctype.find(';', bpos);
+            boundary = (endb != std::string::npos) ? ctype.substr(bpos, endb - bpos) : ctype.substr(bpos);
+        }
+    }
+
+    if (boundary.empty()) {
+        // Fallback: detect from body start "--boundary\r\n"
+        if (body.size() > 4 && memcmp(&body[0], MP_DASHDASH, 2) == 0) {
+            size_t lineEnd = std::string::npos;
+            for (size_t i = 2; i < body.size(); ++i) {
+                if (body[i] == ASCII_LF[0]) { lineEnd = i; break; }
+                if (body[i] == ASCII_CR[0] && i + 1 < body.size() && body[i+1] == ASCII_LF[0]) { lineEnd = i + 1; break; }
+            }
+            if (lineEnd != std::string::npos && lineEnd > 2) {
+                std::string b = body.substr(2, lineEnd - 2);
+                while (!b.empty() && (b[b.size()-1] == ASCII_CR[0] || b[b.size()-1] == ASCII_LF[0])) b.resize(b.size()-1);
+                boundary.swap(b);
+            }
+        }
+    }
+
+    if (boundary.empty()) return false;
+
+    std::string dashBoundary = std::string(MP_DASHDASH) + boundary;
+    size_t partStart = body.find(dashBoundary);
+    while (partStart != std::string::npos) {
+        size_t headersStart = partStart + dashBoundary.size();
+        if (headersStart < body.size() && body.compare(headersStart, 2, std::string(ASCII_CR) + ASCII_LF) == 0)
+            headersStart += 2;
+        else if (headersStart < body.size() && (body[headersStart] == ASCII_LF[0]))
+            headersStart += 1;
+
+        size_t headersEnd = body.find(std::string(ASCII_CR) + ASCII_LF + ASCII_CR + ASCII_LF, headersStart);
+        size_t sepLen = 4;
+        if (headersEnd == std::string::npos) {
+            headersEnd = body.find(std::string(ASCII_LF) + ASCII_LF, headersStart);
+            sepLen = 2;
+        }
+        if (headersEnd == std::string::npos) break; // malformed
+
+        bool isQ = false; bool isFile = false;
+        size_t i = headersStart;
+        while (i + 4 < headersEnd) {
+            if (headersEnd - i >= 9 && memcmp(&body[i], MP_FILENAME, 9) == 0) {
+                isFile = true;
+            }
+            if (headersEnd - i >= 5 && memcmp(&body[i], MP_NAME, 5) == 0) {
+                size_t v = i + 5;
+                if (v < headersEnd && (unsigned char)body[v] == 0x22) { ++v; }
+                if (v < headersEnd) {
+                    unsigned char ch = (unsigned char)body[v];
+                    if (ch == 0x71 || ch == 0x51) { isQ = true; break; }
+                }
+            }
+            ++i;
+        }
+
+    size_t contentStart = headersEnd + sepLen;
+    std::string crlfDashBoundary = std::string(ASCII_CR) + ASCII_LF + dashBoundary;
+    std::string lfDashBoundary   = std::string(ASCII_LF) + dashBoundary;
+        size_t nextBoundary = body.find(crlfDashBoundary, contentStart);
+        if (nextBoundary == std::string::npos)
+            nextBoundary = body.find(lfDashBoundary, contentStart);
+        if (nextBoundary == std::string::npos)
+            nextBoundary = body.find(dashBoundary, contentStart);
+        if (nextBoundary == std::string::npos) break; // malformed
+
+        if (isQ && !isFile) {
+            std::string val = body.substr(contentStart, nextBoundary - contentStart);
+            while (!val.empty()) {
+                char last = val[val.size() - 1];
+                if (last == ASCII_CR[0] || last == ASCII_LF[0]) val.resize(val.size() - 1); else break;
+            }
+            // Convert multipart ASCII value to EBCDIC for downstream SQL handling
+            outSql = cvtToEBCDIC(val);
+            logSQLMsg("multipart q length=%d", (int)outSql.size());
+            return !outSql.empty();
+        }
+
+        partStart = body.find(dashBoundary, nextBoundary + dashBoundary.size());
+    }
+    return false;
 }
 
 
@@ -585,8 +912,8 @@ int main(int argc, char *argv[])
 
     std::ofstream outFile;
 
-    CXLate toASCII;
-    CXLate toEBCDIC;
+
+
 
     logSQLMsg("REQUEST_METHOD: %s", pReqMeth);
     logSQLMsg("QUERY_STING: %s", pQuery);
@@ -658,7 +985,18 @@ int main(int argc, char *argv[])
         char* pEnv = getenv("CGI_MODE");
         TO_ASCII = '1';
         json = &json_ascii;  // Use ASCII for JSON synmbols instead of job CCSID
-
+        logSQLMsg("Host CCSID: %d  Web Browser CCSID: %d", hostCCSID, clientCCSID);
+        if (clientCCSID != hostCCSID) {
+            // Create conversion tables using iconv
+            // (NOTE: They are auto-closed/released in their ~destructor)
+            toASCII.openIBM( hostCCSID , clientCCSID);
+            toEBCDIC.openIBM( clientCCSID , hostCCSID );
+            bXLate = true;
+        }
+        else
+        {
+            bXLate = false;  // Same CCSID, then no xlate needed.
+        }
 
             // TODO: Need more testing on other CGI_MODE environments
             // to determine if conversion to ASCII for JSON is required
@@ -673,13 +1011,9 @@ int main(int argc, char *argv[])
                         !startsWith(cgiMode,"MIXED") &&
                         !startsWith(cgiMode,"EBCDIC")) ? 1 : 0;
        }
-        // CGI mode: extract from QUERY_STRING
-        const char* qs = cgi_getenv("QUERY_STRING");
-        logSQLMsg("cgi_QRY_STG:  %s", qs);
-
-        std::string query = qs ? qs : "";
-        std::string qValue = getQueryParm(query, "q"); // get sql stmt (q) CGI variable value
-        sqlStmt = urlDecode(qValue);
+     // CGI mode: support both GET and POST to retrieve 'q'
+        getCGIInput(sqlStmt);
+        logSQLMsg("cgi_input.q len: %d", (int)sqlStmt.size());
 
         // Assume sqlStmt is your input std::string (UTF-8)
         const char* pInBuffer = sqlStmt.c_str();
@@ -688,25 +1022,15 @@ int main(int argc, char *argv[])
 
         // Convert use iconv if HTTP server doesn't do it automatically
         if (bXLate) {
-            std::vector<char> ebcdicData(iLen * 4);
-            if (toEBCDIC.convert(pInBuffer, iLen, &ebcdicData[0], ebcdicData.size()) >= 0)
-            {
-                sqlStmt.assign(ebcdicData.begin(), ebcdicData.end());
-            }
+                std::vector<char> ebcdicData(iLen * 4);
+                if (toEBCDIC.convert(pInBuffer, iLen, &ebcdicData[0], ebcdicData.size()) >= 0)
+                {
+                    sqlStmt.assign(ebcdicData.begin(), ebcdicData.end());
+                }
         }
 
 
-        if (clientCCSID != hostCCSID) {
-            // Create conversion tables using iconv
-            // (NOTE: They are auto-closed/released in their ~destructor)
-            toASCII.openIBM( hostCCSID , clientCCSID);
-            toEBCDIC.openIBM( clientCCSID , hostCCSID );
-            bXLate = true;
-        }
-        else
-        {
-            bXLate = false;  // Same CCSID, then no xlate needed.
-        }
+
     }
       // IBM i requires JSON to be written to the browser/stdout as ASCII
         // but the content type must be in EBCDIC.
@@ -725,9 +1049,11 @@ int main(int argc, char *argv[])
 
 
     if (sqlStmt.empty()) {
-        returnFailure(output, toASCII, "No results generated.");
+        returnFailure(output, "No results generated.");
         return 0;
     }
+
+    logSQLMsg("QUER_STRING=%s", sqlStmt.c_str());
 
     // Efficiently trim trailing spaces and semicolons from SQL statement
     size_t endPos = sqlStmt.find_last_not_of("; \t\n\r");
@@ -771,7 +1097,7 @@ int main(int argc, char *argv[])
     {
         logSQLMsg("%d = SQLAllocHandle(SQL_HANDLE_ENV... with %d - %s) failed.",
                         rc, errno, strerror(errno));
-        returnFailure(output, toASCII,"Could not allocate SQL hEnv handle. Request cancelled.");
+        returnFailure(output, "Could not allocate SQL hEnv handle. Request cancelled.");
         return 0;
     }
 
@@ -791,7 +1117,7 @@ int main(int argc, char *argv[])
         char szError[256];
         sprintf(szError,"%d = SQLSetEnvAttr(%d,SQL_ATTR_INVOKING_PGM) Failed with errno(%d) - %s", rc,(int)hEnv , errno, strerror(errno));
         logSQLMsg(szError);
-        returnFailure(output, toASCII,szError);
+        returnFailure(output, szError);
         return 0;
       }
     }
@@ -808,38 +1134,38 @@ int main(int argc, char *argv[])
 
     // Allocate connection handle
     rc = SQLAllocHandle(SQL_HANDLE_DBC, hEnv, &hDbc);
-    ifCheckError(output, toASCII, rc, hDbc, SQL_HANDLE_DBC, "AllocateConn");
+    ifCheckError(output,  rc, hDbc, SQL_HANDLE_DBC, "AllocateConn");
 
     attr = SQL_TRUE;   // Allow extended attributes via SQLColAttribute
     rc = SQLSetConnectAttr(hDbc,SQL_ATTR_EXTENDED_COL_INFO, (SQLPOINTER)&attr,0);
-    ifCheckError(output, toASCII, rc, hDbc, SQL_HANDLE_DBC, "SetConnAttr");
+    ifCheckError(output,  rc, hDbc, SQL_HANDLE_DBC, "SetConnAttr");
 
     // Connect to the database (null means use default)
     rc = SQLConnect(hDbc, NULL, 0, NULL, 0, NULL, 0);
     if (rc != SQL_SUCCESS && rc != SQL_SUCCESS_WITH_INFO)
     {
-        ifCheckError(output, toASCII, rc, hDbc, SQL_HANDLE_DBC, "Connect");
+        ifCheckError(output,  rc, hDbc, SQL_HANDLE_DBC, "Connect");
     }
 
     // Allocate statement handle
     rc = SQLAllocHandle(SQL_HANDLE_STMT, hDbc, &hStmt);
-    ifCheckError(output, toASCII, rc, hStmt, SQL_HANDLE_STMT, "AllocStmt");
+    ifCheckError(output,  rc, hStmt, SQL_HANDLE_STMT, "AllocStmt");
 
     // Prepare statement
     rc = SQLPrepare(hStmt, (SQLCHAR *)sqlStmt.c_str(), SQL_NTS);
-    ifCheckError(output, toASCII, rc, hStmt, SQL_HANDLE_STMT, "Prepare");
+    ifCheckError(output,  rc, hStmt, SQL_HANDLE_STMT, "Prepare");
 
     // Execute statement
     rc = SQLExecute(hStmt);
     if (rc != SQL_SUCCESS && rc != SQL_SUCCESS_WITH_INFO)
     {
-        ifCheckError(output, toASCII, rc, hStmt, SQL_HANDLE_STMT, "Execute");
+        ifCheckError(output,  rc, hStmt, SQL_HANDLE_STMT, "Execute");
     }
 
     // Get number of columns
     SQLSMALLINT numCols = 0;
     rc = SQLNumResultCols(hStmt, &numCols);
-    ifCheckError(output, toASCII, rc, hStmt, SQL_HANDLE_STMT, "NumResultCols");
+    ifCheckError(output,  rc, hStmt, SQL_HANDLE_STMT, "NumResultCols");
     logSQLMsg("Columns returned: %d",numCols);
 
         // Create column vector
@@ -858,7 +1184,7 @@ int main(int argc, char *argv[])
 
         rc = SQLDescribeCol(hStmt, i, colName, sizeof(colName), &nameLen,
                              &dataType, &colSize, &decimalDigits, &nullable);
-        ifCheckError(output, toASCII, rc, hStmt, SQL_HANDLE_STMT, "DescribeCol");
+        ifCheckError(output,  rc, hStmt, SQL_HANDLE_STMT, "DescribeCol");
 
             // get column headings
         rc = SQLColAttribute( hStmt, i, SQL_DESC_LABEL,
@@ -891,17 +1217,17 @@ int main(int argc, char *argv[])
         const Column &col = columns[i];
         output << json->LCURLY
             << json->QUOTE << json->COL_NAME << json->QUOTE << json->COLON << json->QUOTE
-            << jsonEscape(cvtToASCII(col.name, toASCII)) << json->QUOTE << json->COMMA
+            << jsonEscape(cvtToASCII(col.name)) << json->QUOTE << json->COMMA
             << json->QUOTE << json->COL_TYPE << json->QUOTE << json->COLON <<
-                    cvtToASCII(sqlTypeToJSONText(col.type), toASCII) << json->COMMA
+                    cvtToASCII(sqlTypeToJSONText(col.type)) << json->COMMA
             << json->QUOTE << json->COL_LENGTH << json->QUOTE << json->COLON <<
-                cvtToASCII(intToText(col.size), toASCII) << json->COMMA
+                cvtToASCII(intToText(col.size)) << json->COMMA
             << json->QUOTE << json->COL_DECPOS << json->QUOTE << json->COLON <<
-                cvtToASCII(intToText(col.decimals), toASCII) << json->COMMA
+                cvtToASCII(intToText(col.decimals)) << json->COMMA
             << json->QUOTE << json->COL_ALLOWNULL << json->QUOTE << json->COLON
             << (col.nullable ? json->TRUE : json->FALSE) << json->COMMA
             << json->QUOTE << json->COL_COLHDR << json->QUOTE << json->COLON << json->QUOTE
-            << jsonEscape(cvtToASCII(col.colhdr, toASCII)) << json->QUOTE
+            << jsonEscape(cvtToASCII(col.colhdr)) << json->QUOTE
             << json->RCURLY;
     }
     output << json->RSQUARE << json->COMMA  << json->LF;
@@ -918,7 +1244,7 @@ int main(int argc, char *argv[])
     while ((rc = SQLFetch(hStmt)) != SQL_NO_DATA)
     {
         rows++;  // row counter
-        ifCheckError(output, toASCII, rc, hStmt, SQL_HANDLE_STMT, "Fetch");
+        ifCheckError(output,  rc, hStmt, SQL_HANDLE_STMT, "Fetch");
         if (!firstRow)
             output << json->COMMA  << json->LF;
         firstRow = false;
@@ -928,7 +1254,7 @@ int main(int argc, char *argv[])
             if (i > 0)
                 output << json->COMMA;
             const Column &col = columns[i];
-            output << json->QUOTE << jsonEscape(cvtToASCII(col.name, toASCII)) << json->QUOTE << json->COLON;
+            output << json->QUOTE << jsonEscape(cvtToASCII(col.name)) << json->QUOTE << json->COLON;
             memset(buf, 0x00, sizeof(buf));
             SQLINTEGER indicator = 0;
             switch (col.type)
@@ -958,7 +1284,7 @@ int main(int argc, char *argv[])
                 if (indicator == SQL_NULL_DATA) {
                     output << json->NULL_VAL;
                 } else {
-                    output << json->QUOTE << jsonEscape(cvtToASCII(val, toASCII)) << json->QUOTE;
+                    output << json->QUOTE << jsonEscape(cvtToASCII(val)) << json->QUOTE;
                 }
                 break;
             }
@@ -977,7 +1303,7 @@ int main(int argc, char *argv[])
                     std::ostringstream oss;
                     oss << ival;
                     std::string ivalStr = oss.str();
-                    std::string asciiInt = cvtToASCII(ivalStr, toASCII);
+                    std::string asciiInt = cvtToASCII(ivalStr);
                     output << asciiInt;
                 }
                 break;
@@ -997,7 +1323,7 @@ int main(int argc, char *argv[])
                     std::ostringstream oss;
                     oss << dval;
                     std::string dblStr = oss.str();
-                    std::string asciiDouble = cvtToASCII(dblStr, toASCII);
+                    std::string asciiDouble = cvtToASCII(dblStr);
                     output << asciiDouble;
                 }
                 break;
@@ -1029,7 +1355,7 @@ int main(int argc, char *argv[])
                 else
                 {
                     std::string val(buf);
-                    output << json->QUOTE << jsonEscape(cvtToASCII(val, toASCII)) << json->QUOTE;
+                    output << json->QUOTE << jsonEscape(cvtToASCII(val)) << json->QUOTE;
                 }
                 break;
             }
@@ -1041,7 +1367,7 @@ int main(int argc, char *argv[])
     g_dataOpen = false;
 
     if (rows == 0) {
-        returnFailure(output, toASCII, "0 Rows returned");
+        returnFailure(output,  "0 Rows returned");
     }
     else {
         output << json->LF << json->RCURLY;

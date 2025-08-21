@@ -58,6 +58,17 @@
         "vector": "cpp",
         "chrono": "cpp",
         "compare": "cpp",
-        "algorithm": "cpp"
+        "algorithm": "cpp",
+        "fstream": "cpp",
+        "sstream": "cpp",
+        "__tree": "cpp",
+        "complex": "cpp",
+        "deque": "cpp",
+        "iomanip": "cpp",
+        "map": "cpp",
+        "stack": "cpp",
+        "__nullptr": "cpp",
+        "__string": "cpp",
+        "concepts": "cpp"
     }
 }

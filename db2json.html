@@ -14,10 +14,16 @@
 
 <body>
     <h1>DB2JSON Query</h1>
-    <form id="sqlForm">
+    <form id="sqlForm" method="post" enctype="multipart/form-data">
         <div class="sql-label-row">
             <label for="sqlInput">Type SQL or select from history:</label>
             <button type="submit" class="run-sql-btn" title="Run the current SQL statement at the cursor">Run SQL</button>
+            <label for="submitMode" class="visually-hidden">Submit mode</label>
+            <select id="submitMode" title="Choose how to send the request">
+                <option value="GET">GET (query string)</option>
+                <option value="POST_URLENC">POST (x-www-form-urlencoded)</option>
+                <option value="POST_MULTIPART">POST (multipart/form-data)</option>
+            </select>
             <span class="label-divider" role="separator" aria-hidden="true">:</span>
             <div class="history-actions" aria-label="SQL history actions">
                 <button id="editSqlHistoryBtn" type="button" class="link-btn" title="Open the History Editor to view/edit saved SQL statements">Edit History</button>
@@ -28,7 +34,7 @@
             <select id="sqlHistoryDropdown" title="SQL History"></select>
             <div class="sql-textarea-row">
                 <div class="textarea-btn-container">
-                    <textarea id="sqlInput" name="sqlInput" rows="6" cols="80"></textarea>
+                    <textarea id="sqlInput" name="q" rows="6" cols="80"></textarea>
                     <button id="copySqlInputBtn" type="button" title="Copy your SQL stmt to the clipboard"
                         class="copy-sql-btn" aria-label="Copy SQL to clipboard">
                         <span class="copy-icon-wrapper">
