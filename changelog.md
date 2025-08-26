@@ -21,6 +21,7 @@
 - Multiple SQL Statements:
   - You may specify multiple SQL statements in the SQL Editor window (SQL input area) by separating the SQL statements with a semicolon. When a semicolon is used, the "Run SQL" button searches the editor box for the start and end location for the statement in which the cursor is located at the time it is pressed.
   - We currently do not support running more than one statement per "Run SQL" request.
+- The DB2JSON.cpp file has been staged to support SQL syntax checking in the future. You may see references to the QSQCHKS API in it, but it is not yet implemented.
 
 ## 0.0.2 - Minor pdate - 21 AUGUST 2025
 - Added support for both GET and POST CGI Form request methods.
