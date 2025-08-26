@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SQL Runner</title>
+  <style>
+    :root {
+      --radius: 14px;
+      --pad: 12px;
+      --gap: 10px;
+      --font: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    body {
+      font-family: var(--font);
+      margin: 0;
+      background: #f6f7f9;
+      color: #0f172a;
+      line-height: 1.35;
+    }
+    .wrap {
+      max-width: 900px;
+      margin: 24px auto;
+      padding: 16px;
+    }
+    .card {
+      background: #fff;
+      border-radius: var(--radius);
+      box-shadow: 0 8px 24px rgba(0,0,0,.08);
+      padding: 18px;
+    }
+
+    /* Row 1: Title + Run button */
+    .row {
+      display: flex;
+      align-items: center;
+      gap: var(--gap);
+      margin-bottom: var(--gap);
+    }
+
+    .row--header {
+      justify-content: space-between;
+    }
+
+    .title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    /* Buttons */
+    .btn {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 600;
+      background: #0ea5e9;
+      color: white;
+      box-shadow: 0 2px 0 rgba(0,0,0,.12);
+      transition: transform .05s ease, filter .2s ease;
+      white-space: nowrap;
+    }
+    .btn:hover { filter: brightness(1.05); }
+    .btn:active { transform: translateY(1px); }
+
+    .btn.secondary {
+      background: #e2e8f0;
+      color: #0f172a;
+      font-weight: 600;
+    }
+
+    /* Row 2: History dropdown + Edit/Clear buttons */
+    .row--history {
+      /* This row's width will be synced to the textarea width via JS */
+      display: flex;
+      align-items: center;
+      gap: var(--gap);
+      margin-bottom: var(--gap);
+      width: 100%;
+    }
+
+    .history-select {
+      flex: 1 1 auto;
+      min-width: 120px;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      background: white;
+      font-size: 14px;
+    }
+
+    /* Row 3: Resizable textarea */
+    .editor {
+      position: relative;
+      display: inline-block; /* enables the textarea to establish its own width */
+      max-width: 100%;
+    }
+
+    textarea {
+      width: 720px;          /* sensible starting width */
+      height: 240px;         /* sensible starting height */
+      max-width: 100%;
+      padding: var(--pad);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 14px;
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      background: #fff;
+      resize: both;          /* allow user to resize both directions */
+      box-sizing: border-box;
+    }
+
+    /* Small helper text */
+    .hint {
+      font-size: 12px;
+      color: #475569;
+      margin-top: 6px;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+    <h1>DB2JSON Query</h1>
+    <form id="sqlForm" method="post" enctype="multipart/form-data">
+  <div class="wrap">
+    <div class="card">
+      <!-- Row 1: Title + Run button on one line -->
+      <div class="row row--header">
+        <div class="title">Type SQL or select from history:</div>
+        <button class="btn" id="runBtn" title="Run SQL and view results">Run SQL</button>
+      </div>
+
+      <!-- Row 2: Dropdown + edit/clear buttons on next line -->
+      <div class="row row--history" id="historyRow">
+          <select id="sqlHistoryDropdown" title="SQL History">
+          <option value="">&dash; Select a previous SQL statement &dash;</option>
+        </select>
+        <button class="btn secondary" id="editSqlHistoryBtn" title="Open the History Editor to view/edit saved SQL statements">EDIT HIST</button>
+        <button class="btn secondary" id="clearSqlHistoryBtn" title="Clear all saved SQL statements from this browser">CLEAR HIST</button>
+      </div>
+
+      <!-- Row 3: Resizable textarea on the next line -->
+        <div class="sqlInput-copy-wrapper">
+            <div class="sql-textarea-row">
+                <div class="textarea-btn-container">
+                    <textarea id="sqlInput" name="q" rows="6" cols="80" placeholder="Type any SQL statement. Separate multiple statements with a sem-colon;"></textarea>
+                    <button id="copySqlInputBtn" type="button" title="Copy your SQL stmt to the clipboard"
+                        class="copy-sql-btn" aria-label="Copy SQL to clipboard">
+                        <span class="copy-icon-wrapper">
+                            <svg class="copy-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"
+                                xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                                <rect x="5" y="3" width="11" height="14" rx="2" fill="#fff" stroke="#555"
+                                    stroke-width="1.5" />
+                                <rect x="2.5" y="6" width="11" height="11" rx="2" fill="#f5f5f5" stroke="#bbb"
+                                    stroke-width="1.2" />
+                            </svg>
+                            <span class="copy-checkmark-feedback"></span>
+                        </span>
+                        <span class="copy-sql-btn-label">Copy</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+      <div class="hint">Tip: drag the textarea corner to resize. The history dropdown row will follow its width.</div>
+    </div>
+  </div>
+</form>
+
+  <script>
+    // Elements
+    const textarea = document.getElementById('sqlText');
+    const historyRow = document.getElementById('historyRow');
+    const historySelect = document.getElementById('historySelect');
+    const runBtn = document.getElementById('runBtn');
+    const editHistBtn = document.getElementById('editHistBtn');
+    const clearHistBtn = document.getElementById('clearHistBtn');
+
+    // Ensure the history row width matches the textarea width (including during user resize)
+    function syncHistoryWidth() {
+      // Use the rendered width of the textarea's border-box
+      const w = Math.round(textarea.getBoundingClientRect().width);
+      historyRow.style.width = w + 'px';
+    }
+
+    // Initial sync after layout
+    window.addEventListener('load', syncHistoryWidth);
+    window.addEventListener('resize', syncHistoryWidth);
+
+    // Observe live resizes of the textarea itself
+    const ro = new ResizeObserver(syncHistoryWidth);
+    ro.observe(textarea);
+
+    // Populate textarea when picking from history
+    historySelect.addEventListener('change', () => {
+      const val = historySelect.value;
+      if (val) textarea.value = val;
+      textarea.focus();
+    });
+
+    // Placeholder handlers (hook these to your backend as needed)
+    runBtn.addEventListener('click', () => {
+      alert('RUN SQL clicked. Hook this to your execution endpoint.');
+    });
+
+    editHistBtn.addEventListener('click', () => {
+      alert('EDIT HIST clicked. Show a modal/editor for history management.');
+    });
+
+    clearHistBtn.addEventListener('click', () => {
+      if (confirm('Clear SQL history?')) {
+        // Clear all but the placeholder option
+        for (let i = historySelect.options.length - 1; i >= 1; i--) {
+          historySelect.remove(i);
+        }
+        historySelect.selectedIndex = 0;
+      }
+    });
+  </script>
+</body>
+</html>

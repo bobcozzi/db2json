@@ -41,8 +41,32 @@
 #include <RETTHCNT.mih>
 
 #include <sqlcli.h> // IBM i CLI header
+#include <QSQCHKS.h>  // SQL Syntax Checker API
 
 #include <db2json/h/xlate>
+
+typedef _Packed struct qsq_SQLCheckKey
+{
+    int  Key;
+    int  Length_Vlen_Option;
+     union {
+       char naming[10];
+       char operation;
+       char hostDelim;  // 3) not used for LANG(*NONE)=SQL
+       char SQLDelim;   // 4) Can be ' or "  Default is '
+       char decNotation; // 5) decimal notation . or , default(sysval(QDATFMT))
+       int  leftMargin;  // 6) Not used for LANG(*NONE)=SQL
+       int  rightMargin;  // 7) Not used for LANG(*NONE)=SQL
+       int  ccsid;        // 8) CCSID of SQL source
+       char tgtrls[10];   // 9) Target release as VxRyMz DEFAULT(*CURRENT)
+     };
+} qsq_SQLCheckKey_t;
+
+typedef _Packed struct qsq_SQLCheckOptions
+{
+    int  Number_Of_Keys;
+    qsq_SQLCheckKey_t key[10];
+} qsq_SQLCheckOptions_t;
 
 
 using namespace std;
@@ -1459,4 +1483,27 @@ const char* sqlTypeToJSONText(int sqlType) {
         case SQL_XML:             return "\"XML\"";
         default:                  return "\"UNKNOWN\"";
     }
+}
+
+int SQLSyntaxCheck( const char* sqlStmt )
+{
+
+qsq_SQLCheckOptions_t* pSQLCheckOptions = NULL;
+char SQLCheckBuffer[64];
+memset(SQLCheckBuffer,0x00, sizeof(SQLCheckBuffer));
+qsq_SQLCheckOptions_t* pSQLCheckOptions;
+        // returned structures
+Qsq_Statement_Info_t*  pSQLCheckInfo;
+Qsq_Statement_I_t*     pSQLCheckErrorMsg;
+int stmtsChecked = 0;
+int stmtsToCheck = 1;
+QSQCHKS( szSQLStmt.c_str(),
+            szSQLStmt.length(),  // Length of SQL Statement(s) (parm 1)
+            stmtsToCheck,     // Number of statements to check
+            "*NONE     ",     // HLL Language context *NONE=SQL
+            pSQLCheckOptions, // SQL syntax options (leave 0)
+            pSQLCheckInfo,    // Returned error messages
+            sizeof(checkinf), // Length of return buffer for messages
+            &stmtsChecked,    // Returned checked-statements count
+            &ec);
 }

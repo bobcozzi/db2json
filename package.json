@@ -1,6 +1,6 @@
 {
   "name": "db2json",
-  "version": "1.0.0",
+  "version": "0.0.3",
   "description": "Convert IBM i DB2 SQL query output to JSON format. Includes CGI, HTML, JS, and IBM i build scripts.",
   "main": "js/db2json.js",
   "scripts": {

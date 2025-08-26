@@ -23,7 +23,7 @@ function formatSQL(sql) {
   let formattedSQL = sql.trim().replace(/\s+/g, ' ');
   for (const keyword of keywords.sort((a, b) => b.length - a.length)) {
     const re = new RegExp(`\\b${keyword}\\b`, 'gi');
-    formattedSQL = formattedSQL.replace(re, function(match, offset) {
+    formattedSQL = formattedSQL.replace(re, function (match, offset) {
       if (isRealKeyword(formattedSQL, offset)) {
         return keyword.toUpperCase();
       }
@@ -34,7 +34,7 @@ function formatSQL(sql) {
   // Handle DECLARE ... CURSOR FOR with line breaks
   formattedSQL = formattedSQL.replace(
     /\bDECLARE\s+(\w+)\s+CURSOR\s+FOR\s+(SELECT\b[\s\S]+)/i,
-    function(_, name, select) {
+    function (_, name, select) {
       return `DECLARE ${name} CURSOR FOR\n${select.trim()}`;
     }
   );
@@ -50,7 +50,11 @@ function formatSQL(sql) {
     while ((match = pattern.exec(formattedSQL)) !== null) {
       const matchIndex = match.index;
       if (isRealKeyword(formattedSQL, matchIndex)) {
-        result += formattedSQL.slice(lastIndex, matchIndex) + eol + match[1];
+        if (matchIndex > 0) {
+          result += formattedSQL.slice(lastIndex, matchIndex) + eol + match[1];
+        } else {
+          result += formattedSQL.slice(lastIndex, matchIndex) + match[1];
+        }
       } else {
         result += formattedSQL.slice(lastIndex, pattern.lastIndex - match[1].length) + match[1];
       }
@@ -60,7 +64,7 @@ function formatSQL(sql) {
     formattedSQL = result;
   }
 
-  insertEOLIfRealKeyword(/\b(SELECT|FROM|WHERE|ORDER BY|GROUP BY|HAVING|JOIN|ON)\b/gi);
+  insertEOLIfRealKeyword(/\b(SELECT|FROM|WHERE|WITH|ORDER BY|GROUP BY|HAVING|JOIN|ON)\b/gi);
   insertEOLIfRealKeyword(/\b(AND|OR)\b/gi);
 
   // Indentation logic
@@ -111,10 +115,12 @@ function formatSQL(sql) {
         indent = prevIndent;
       }
     }
-    indented.push(indent + line.trimStart());
+    if (line.trimStart().length > 0) {
+      indented.push(indent + line.trimStart());
+    }
   }
-  return indented.join('\n');
+
+  let result = indented.join('\n');
+  return result.trimEnd(" ;") + ';';
 }
 
-// Export for use in other scripts if needed
-// window.formatSQL = formatSQL;

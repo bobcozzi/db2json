@@ -17,21 +17,20 @@
     <form id="sqlForm" method="post" enctype="multipart/form-data">
         <div class="sql-label-row">
             <label for="sqlInput">Type SQL or select from history:</label>
-            <button type="submit" class="run-sql-btn" title="Run the current SQL statement at the cursor">Run SQL</button>
-            <label for="submitMode" class="visually-hidden">Submit mode</label>
-            <select id="submitMode" title="Choose how to send the request">
-                <option value="GET">GET (query string)</option>
-                <option value="POST_URLENC">POST (x-www-form-urlencoded)</option>
-                <option value="POST_MULTIPART">POST (multipart/form-data)</option>
-            </select>
-            <span class="label-divider" role="separator" aria-hidden="true">:</span>
-            <div class="history-actions" aria-label="SQL history actions">
-                <button id="editSqlHistoryBtn" type="button" class="link-btn" title="Open the History Editor to view/edit saved SQL statements">Edit History</button>
-                <button id="clearSqlHistoryBtn" type="button" class="link-btn danger" title="Clear all saved SQL statements from this browser">Clear History</button>
-            </div>
+            <button type="submit" class="run-sql-btn" title="Run the current SQL statement at the cursor">Run
+                SQL</button>
+            <input type="hidden" id="submitMode" name="submitMode" value="POST_MULTIPART">
         </div>
+
         <div class="sqlInput-copy-wrapper">
-            <select id="sqlHistoryDropdown" title="SQL History"></select>
+            <div class="history-row">
+                <select id="sqlHistoryDropdown" title="SQL History"></select>
+                <button id="editSqlHistoryBtn" type="button" class="link-btn" title="Open History Editor">Edit History
+                </button>
+                <button id="clearSqlHistoryBtn" type="button" class="link-btn danger"
+                    title="Clear saved SQL history">Clear History</button>
+            </div>
+
             <div class="sql-textarea-row">
                 <div class="textarea-btn-container">
                     <textarea id="sqlInput" name="q" rows="6" cols="80"></textarea>
@@ -51,25 +50,25 @@
                     </button>
                 </div>
             </div>
-
         </div>
     </form>
 
-<div class="results-area">
-    <div id="error"></div>
-    <div class="copy-table-btn-row">
-    <button id="copyTableBtn" type="button" class="copy-table-btn is-hidden"
-            title="Copy table for pasting into Excel or Sheets">Copy Table</button>
+    <div class="results-area">
+        <div id="error"></div>
+        <div class="copy-table-btn-row">
+            <button id="copyTableBtn" type="button" class="copy-table-btn is-hidden"
+                title="Copy table for pasting into Excel or Sheets">Copy Table</button>
+        </div>
+        <div id="results"></div>
     </div>
-    <div id="results"></div>
-</div>
 
     <!-- History Edit Modal -->
     <div id="historyModal" class="modal" aria-hidden="true" role="dialog" aria-labelledby="historyModalTitle">
         <div class="modal-content">
             <h3 id="historyModalTitle">Edit SQL History</h3>
-                                    <p class="modal-help">Type or paste statements. Separate statements with an unquoted semicolon (;) like in the SQL textarea. Newlines inside quotes are preserved.</p>
-                                    <textarea id="historyTextarea" rows="12" placeholder="Examples:
+            <p class="modal-help">Type or paste statements. Separate statements with an unquoted semicolon (;) like in
+                the SQL textarea. Newlines inside quotes are preserved.</p>
+            <textarea id="historyTextarea" rows="12" placeholder="Examples:
             -- Single-line
             SELECT * FROM QIWS.QCUSTCDT;
 
@@ -96,7 +95,7 @@
         // Prod: omit ?v= to allow normal caching (or pass ?dev=1 to force busting)
         const qs = location.search;
         const isDev = /(?:^|[?&])(dev|cachebust|nocache)=1(?:&|$)/.test(qs) ||
-                      location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+            location.hostname === 'localhost' || location.hostname === '127.0.0.1';
         const ver = isDev ? String(Date.now()) : null;
         const withV = (path) => ver ? `${path}?v=${ver}` : path;
 

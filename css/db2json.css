@@ -1,3 +1,9 @@
+:root {
+    --radius: 14px;
+    --pad: 12px;
+    --gap: 10px;
+    --font: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
 
 body {
     font-family: Arial, sans-serif;
@@ -45,12 +51,15 @@ body {
 .scroll-table thead th::before {
     content: '';
     display: block;
-    height: 3px; /* top spacer */
+    height: 3px;
+    /* top spacer */
 }
+
 .scroll-table thead th::after {
     content: '';
     display: block;
-    height: 0; /* bottom spacer 3px */
+    height: 0;
+    /* bottom spacer 3px */
 }
 
 .scroll-table tfoot {
@@ -98,12 +107,13 @@ td {
 
 .submit-button-row {
     margin-top: 0;
-    display: flex; /* make gap/align-items effective */
+    display: flex;
+    /* make gap/align-items effective */
     gap: 0.5em;
     align-items: center;
-    margin-bottom: 0.25em; /* tighter space under Run SQL */
+    margin-bottom: 0.25em;
+    /* tighter space under Run SQL */
 }
-
 
 .table-footer-info {
     text-align: left;
@@ -114,30 +124,32 @@ td {
     box-shadow: 0 -2px 8px -2px #bbb;
 }
 
-
 #error {
     color: red;
     margin-top: 1em;
 }
 
-
 /* The checkmark feedback is always present, but hidden by default. */
 /* Wrap icon and checkmark for overlay */
 .copy-icon-wrapper {
     position: relative;
-    width: 16px;   /* narrower icon wrapper */
+    width: 16px;
+    /* narrower icon wrapper */
     height: 16px;
     display: inline-block;
     vertical-align: middle;
-    padding-bottom: 0; /* avoid pushing icon down */
-    top: -1px;         /* nudge icon/checkmark up slightly */
+    padding-bottom: 0;
+    /* avoid pushing icon down */
+    top: -1px;
+    /* nudge icon/checkmark up slightly */
 }
 
 .copy-checkmark-feedback {
     position: absolute;
     top: 0;
     left: 0;
-    width: 16px;   /* match smaller icon size */
+    width: 16px;
+    /* match smaller icon size */
     height: 16px;
     display: flex;
     align-items: center;
@@ -148,19 +160,20 @@ td {
     z-index: 2;
 }
 
-
 .copy-icon {
-    width: 16px;  /* override size to narrow button */
+    width: 16px;
+    /* override size to narrow button */
     height: 16px;
-    display: block; /* remove inline baseline gap */
+    display: block;
+    /* remove inline baseline gap */
 }
 
 .copy-table-btn-row {
-    margin-top: 0.25em; /* reduced to tighten space after Run SQL */
+    margin-top: 0.25em;
+    /* reduced to tighten space after Run SQL */
     position: static;
     z-index: auto;
 }
-
 
 .copy-table-btn {
     padding: 4px 14px;
@@ -168,13 +181,16 @@ td {
     border: 1px solid #bbb;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 0.6em; /* shrink text size to ~60% */
+    font-size: 0.6em;
+    /* shrink text size to ~60% */
     transition: background 0.2s, border 0.2s;
     position: static;
     z-index: auto;
 }
 
-.copy-table-btn.is-hidden { display: none; }
+.copy-table-btn.is-hidden {
+    display: none;
+}
 
 /* Add a bit of space between the Copy Table button and the top of the table */
 #copyTableBtn {
@@ -193,44 +209,28 @@ td {
     outline-offset: 2px;
 }
 
-
-/* --- Copy SQL Input Button Styling --- */
-
-.sqlInput-copy-wrapper {
-    /* position: relative; */
-    display: flex;               /* stack children vertically */
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.5em;
-    width: 100%;
-    margin-bottom: 12px;
-    height: auto !important;     /* override any inline height from older JS */
-}
-
-#sqlForm {
-    width: 100%;
-    box-sizing: border-box;
-    /* border: 1px solid red;  Uncomment for debugging form height */
-}
-
-/* Row containing history actions to the left of the label */
-.sql-label-row {
-    display: flex;
+/* --- Copy SQL Input Button Styling (base button styles) --- */
+.copy-sql-btn {
+    padding: 2px 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    outline: none;
+    transition: background 0.2s;
+    display: inline-flex;
     align-items: center;
-    gap: 0.5em;
-    margin-bottom: 0.25em;
-}
-.sql-label-row label {
-    margin: 0;
+    position: relative;
+    line-height: 1;
+    /* tighten inline height for better centering */
 }
 
-.label-divider {
-    color: #888;
-    -webkit-user-select: none;
-    user-select: none;
-    padding: 0 2px;
-    font-size: 0.9em;
+.copy-sql-btn-label {
+    margin-left: 0;
+    /* rely on flex gap only */
+    font-size: 0.6em;
+    /* shrink label to ~60% */
     line-height: 1;
+    /* align baseline with icon */
 }
 
 /* Inline Run SQL button styling to harmonize with history buttons */
@@ -246,8 +246,17 @@ td {
     cursor: pointer;
     transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-.run-sql-btn:hover { background: #dcecff; border-color: #7aa5ff; }
-.run-sql-btn:active, .run-sql-btn:focus { background: #d3e5ff; border-color: #6d9aff; }
+
+.run-sql-btn:hover {
+    background: #dcecff;
+    border-color: #7aa5ff;
+}
+
+.run-sql-btn:active,
+.run-sql-btn:focus {
+    background: #d3e5ff;
+    border-color: #6d9aff;
+}
 
 /* History actions (inline links style) */
 .history-actions {
@@ -255,6 +264,7 @@ td {
     display: flex;
     gap: 0.5em;
 }
+
 .link-btn {
     appearance: none;
     background: #f5f5f5;
@@ -262,19 +272,37 @@ td {
     border-radius: 4px;
     color: #333;
     cursor: pointer;
-    padding: 2px 6px;          /* tighter like Copy SQL */
-    font-size: 0.6em;          /* match Copy SQL label size */
-    line-height: 1;            /* compact height */
+    padding: 2px 6px;
+    /* tighter like Copy SQL */
+    font-size: 0.6em;
+    /* match Copy SQL label size */
+    line-height: 1;
+    /* compact height */
     transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-.link-btn:hover { background: #ececec; border-color: #aaa; }
-.link-btn:active, .link-btn:focus { background: #e6e6e6; border-color: #999; }
+
+.link-btn:hover {
+    background: #ececec;
+    border-color: #aaa;
+}
+
+.link-btn:active,
+.link-btn:focus {
+    background: #e6e6e6;
+    border-color: #999;
+}
+
 .link-btn.danger {
     background: #fff5f5;
     border-color: #d88;
     color: #a00;
 }
-.link-btn.danger:hover { background: #ffe9e9; border-color: #c66; }
+
+.link-btn.danger:hover {
+    background: #ffe9e9;
+    border-color: #c66;
+}
+
 .link-btn:disabled {
     background: #f5f5f5;
     color: #999;
@@ -287,9 +315,10 @@ td {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.4);
+    background: rgba(0, 0, 0, 0.4);
     z-index: 1000;
 }
+
 .modal-content {
     background: #fff;
     width: min(720px, 90vw);
@@ -297,109 +326,115 @@ td {
     padding: 1em;
     border: 1px solid #ccc;
     border-radius: 6px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
-.modal-help { color: #666; font-size: 0.9em; }
-.modal-actions { display: flex; gap: 0.5em; margin-top: 0.75em; justify-content: flex-end; }
-#historyTextarea { width: 100%; box-sizing: border-box; }
 
-/* Flex row for textarea and copy button */
-.sql-textarea-row {
+.modal-help {
+    color: #666;
+    font-size: 0.9em;
+}
+
+.modal-actions {
     display: flex;
-    flex-direction: row;
-    align-items: flex-start;
-    width: 100%;
     gap: 0.5em;
+    margin-top: 0.75em;
+    justify-content: flex-end;
 }
 
-.sql-textarea-row textarea {
-    flex: 1 1 auto;
-    min-width: 0;
+#historyTextarea {
+    width: 100%;
+    box-sizing: border-box;
 }
 
-.copy-sql-btn {
-    padding: 2px 8px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    outline: none;
-    transition: background 0.2s;
-    display: inline-flex;
-    align-items: center;
-    position: relative;
-    line-height: 1; /* tighten inline height for better centering */
+/* === SQL input area (consolidated, keep this) === */
+
+/* Wrapper: NOT resizable; expands with textarea and window; no height cap */
+.sqlInput-copy-wrapper {
+  display: inline-block;
+  width: auto;
+  max-width: 100%;
+  overflow: visible;
+  resize: none;
+  vertical-align: top;
 }
 
-.copy-sql-btn:active,
-.copy-sql-btn:focus {
-    background: #e0e0e0;
+/* History row: dropdown flexes; Edit/Clear to the right; no wrap */
+#sqlForm .history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  width: 100%;
 }
 
-/* Place the Copy SQL button inside the textarea container */
-.textarea-btn-container .copy-sql-btn {
-    position: absolute;
-    top: 2px;
-    right: 8px;
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;                 /* tight spacing between icon and label */
-    padding: 2px 6px 0 6px;   /* lift content a bit within the button */
-    background: #f5f5f5;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 1em;
-    transition: background 0.2s, border 0.2s;
-    z-index: 2;
+#sqlForm .history-row #sqlHistoryDropdown {
+  flex: 1 1 auto;
+  min-width: 220px;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
-/* Subtle hover state for Copy SQL button (only when enabled) */
-.textarea-btn-container .copy-sql-btn:not(:disabled):hover {
-    background: #ececec;
-    border-color: #ccc;
+#sqlForm .history-row #editSqlHistoryBtn,
+#sqlForm .history-row #clearSqlHistoryBtn {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
-/* Disabled state for Copy SQL button */
-.textarea-btn-container .copy-sql-btn:disabled {
-    background: #f5f5f5;
-    border-color: #eee;
-    color: #999;
-    cursor: not-allowed;
-    opacity: 0.6;
+/* Textarea row must NOT be flex; let textarea control its own size */
+.sql-textarea-row {
+  display: block;
+  width: auto;
 }
 
-/* Remove earlier conflicting absolute rules; unified above */
-
-.copy-sql-btn-label {
-    margin-left: 0;     /* rely on flex gap only */
-    font-size: 0.6em; /* shrink label to ~60% */
-    line-height: 1;   /* align baseline with icon */
-}
-/* --- Copy button checkmark feedback styling --- */
-
-/* Container for textarea and copy button, positions button over textarea border */
+/* Container for textarea + overlayed Copy button */
 .textarea-btn-container {
-    position: relative;
-    width: 100%;
+  position: relative;
+  display: inline-block; /* shrink-wrap to textarea width */
+  width: auto;
+  max-width: 100%;
+  overflow: visible;     /* don't cap textarea height */
+  resize: none;          /* no second handle */
 }
 
-
-.sqlInput-copy-wrapper textarea {
-    width: 100%;
-    box-sizing: border-box;
-}
-
-
-
-.results-area {
-    margin-top: 0.5em; /* tightened spacing above results */
-    display: block;
-    position: relative; /* isolate stacking context to avoid odd overlaps */
-    clear: both; /* belt-and-suspenders against legacy floats */
-}
-
+/* Textarea: single resizable element; sensible initial size */
 #sqlInput {
-    width: 100%;
-    box-sizing: border-box;
+  display: block;
+  width: 80vw; /* ~80% of window width initially */
+  min-width: 25vw;          /* NEW: don’t allow narrower than 25% of window */
+  height: 30vh;             /* ~1/3 of window height initially */
+  max-width: 100%;          /* shrink with window */
+  box-sizing: border-box;
+  resize: both;             /* one handle (textarea only) */
+  overflow: auto;
 }
 
+/* Copy SQL button pinned to textarea's top-right, styled */
+.textarea-btn-container .copy-sql-btn {
+  position: absolute;
+  top: 2px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;                     /* tight spacing between icon and label */
+  padding: 2px 6px 0 6px;       /* lift content a bit within the button */
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1em;
+  transition: background 0.2s, border 0.2s;
+  z-index: 2;
+}
+
+.textarea-btn-container .copy-sql-btn:not(:disabled):hover {
+  background: #ececec;
+  border-color: #ccc;
+}
+
+.textarea-btn-container .copy-sql-btn:disabled {
+  background: #f5f5f5;
+  border-color: #eee;
+  color: #999;
+  cursor: not-allowed;
+  opacity: 0.6;
+}

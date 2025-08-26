@@ -85,6 +85,9 @@ function initDb2jsonUI() {
     if (modal) modal.addEventListener('click', (e) => {
         if (e.target === modal) closeEditHistoryModal();
     });
+
+    // Attach textarea → controls width sync after UI is in the DOM
+    attachSqlInputResizeSync();
 }
 
 // Run init now if DOM is ready; otherwise wait for DOMContentLoaded
@@ -121,7 +124,7 @@ function escapeHTML(str) {
 }
 
 // Extracts the SQL statement at the cursor position, skipping quoted semicolons
-function getSqlStatementAtCursor(input, cursorPos) {
+function getSQLStmtAtCursor(input, cursorPos) {
     // Find start
     let inSingle = false, inDouble = false;
     let start = 0;
@@ -143,7 +146,40 @@ function getSqlStatementAtCursor(input, cursorPos) {
     let stmt = input.slice(start, end).trim();
     // Remove trailing semicolon for cleaner UX
     if (stmt.endsWith(';')) stmt = stmt.slice(0, -1).trim();
-    return stmt;
+    return { stmt, start, end };
+}
+
+function getSQLStmtsInSelection(input, selectionStart, selectionEnd) {
+    const selected = input.slice(selectionStart, selectionEnd);
+    const stmts = [];
+    let inSingle = false, inDouble = false;
+    let stmtStart = 0;
+    for (let i = 0; i < selected.length; i++) {
+        const c = selected[i];
+        if (c === "'" && !inDouble) inSingle = !inSingle;
+        else if (c === '"' && !inSingle) inDouble = !inDouble;
+        else if (c === ';' && !inSingle && !inDouble) {
+            const stmtText = selected.slice(stmtStart, i).trim();
+            if (stmtText) {
+                stmts.push({
+                    stmt: stmtText,
+                    start: selectionStart + stmtStart,
+                    end: selectionStart + i + 1 // include semicolon
+                });
+            }
+            stmtStart = i + 1;
+        }
+    }
+    // Last statement (if any)
+    const lastStmt = selected.slice(stmtStart).trim();
+    if (lastStmt) {
+        stmts.push({
+            stmt: lastStmt,
+            start: selectionStart + stmtStart,
+            end: selectionStart + selected.length
+        });
+    }
+    return stmts;
 }
 
 async function handleSqlSubmit(e) {
@@ -162,7 +198,7 @@ async function handleSqlSubmit(e) {
     copyTableBtn.classList.add('is-hidden');
 
     // Get the statement at the cursor
-    const query = getSqlStatementAtCursor(input, cursor);
+    const { stmt: query } = getSQLStmtAtCursor(input, cursor);
     try {
         const submitMode = (document.getElementById('submitMode')?.value) || 'GET';
         let response;
@@ -492,42 +528,44 @@ function copySqlInput() {
 
     menu.querySelector('#formatSqlMenuItem').addEventListener('click', function() {
         menu.style.display = 'none';
-        // Get the statement at the cursor
         const input = textarea.value;
+        const selectionStart = textarea.selectionStart;
+        const selectionEnd = textarea.selectionEnd;
+
+        // If there is a selection, format all statements in it
+        if (selectionStart !== selectionEnd) {
+            const stmts = getSQLStmtsInSelection(input, selectionStart, selectionEnd);
+            if (!stmts.length) return;
+            const formattedBlocks = stmts.map(obj => formatSQL(obj.stmt));
+            // Preserve prefix and suffix
+            let prefix = input.slice(0, stmts[0].start);
+            if (prefix && !prefix.endsWith('\n')) prefix += '\n';
+            let suffix = input.slice(stmts[stmts.length - 1].end);
+            // Join formatted statements with double newline for clarity
+            const joined = formattedBlocks.join('\n\n');
+            textarea.value = prefix + joined + suffix;
+            textarea.selectionStart = prefix.length;
+            textarea.selectionEnd = prefix.length + joined.length;
+            textarea.focus();
+            return;
+        }
+
+        // Otherwise, format the statement at the cursor as before
         const cursor = textarea.selectionStart;
-        const stmt = getSqlStatementAtCursor(input, cursor);
+        const { stmt, start, end } = getSQLStmtAtCursor(input, cursor);
         if (!stmt) return;
-        // Format it
         if (typeof formatSQL !== 'function') {
             alert('SQL formatter not loaded.');
             return;
         }
+        let prefix = input.slice(0, start);
+        if (prefix && !prefix.endsWith('\n')) prefix += '\n';
         const formatted = formatSQL(stmt);
-        // Replace the statement in the textarea
-        // Find statement bounds
-        let inSingle = false, inDouble = false;
-        let start = 0;
-        for (let i = cursor - 1; i >= 0; i--) {
-            const c = input[i];
-            if (c === "'" && !inDouble) inSingle = !inSingle;
-            else if (c === '"' && !inSingle) inDouble = !inDouble;
-            else if (c === ';' && !inSingle && !inDouble) { start = i + 1; break; }
-        }
-        inSingle = false; inDouble = false;
-        let end = input.length;
-        for (let i = cursor; i < input.length; i++) {
-            const c = input[i];
-            if (c === "'" && !inDouble) inSingle = !inSingle;
-            else if (c === '"' && !inSingle) inDouble = !inDouble;
-            else if (c === ';' && !inSingle && !inDouble) { end = i + 1; break; }
-        }
-        textarea.value = input.slice(0, start) + formatted + input.slice(end);
-        // Optionally, move cursor to end of formatted statement
-        textarea.selectionStart = textarea.selectionEnd = start + formatted.length;
+        textarea.value = prefix + formatted + input.slice(end);
+        textarea.selectionStart = textarea.selectionEnd = prefix.length + formatted.length;
         textarea.focus();
     });
 })();
-
 
 
 function getSqlHistory() {
@@ -706,4 +744,30 @@ function splitSqlStatementsBySemicolon(input) {
     const last = input.slice(start).trim();
     if (last) out.push(last);
     return out;
+}
+
+function attachSqlInputResizeSync() {
+  // Tear down any previous observers/listeners
+  if (window._db2jsonRO && window._db2jsonRO.disconnect) window._db2jsonRO.disconnect();
+  window._db2jsonRO = null;
+  if (window._db2jsonWinResize) {
+    window.removeEventListener('resize', window._db2jsonWinResize);
+    window._db2jsonWinResize = null;
+  }
+
+  const ta = document.getElementById('sqlInput');
+  const container = document.querySelector('.textarea-btn-container');
+  if (!ta) return;
+
+  // Remove stale inline sizes that cap growth
+  ta.style.removeProperty('width');       // let CSS width:min(80vw,1200px) apply
+  ta.style.removeProperty('height');      // let CSS height:30vh apply
+  if (container) container.style.removeProperty('width'); // let inline-block shrink-wrap
+
+  // Make textarea the only resizable element
+  ta.style.maxWidth = '100%';
+  ta.style.resize = 'both';
+  ta.style.overflow = 'auto';
+
+  // No ResizeObserver, no window resize handler. CSS controls layout now.
 }
