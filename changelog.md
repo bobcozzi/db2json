@@ -28,7 +28,7 @@
 
 ## 0.0.2 - Minor pdate - 21 AUGUST 2025
 - Added support for both GET and POST CGI Form request methods.
-- Added support for the following 2 POST encoding methods: `multipart-form` and `x-www-form-urlencoded`
+- Added support for two POST encoding methods: `multipart-form` and `x-www-form-urlencoded`
 - The new default for submitting the SQL requst is: `method="post" enctype="multipart/form-data"`
 
 ## 0.0.1 - Initial Release - 19 AUGUST 2025
