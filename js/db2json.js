@@ -105,7 +105,7 @@ function buildColTitle(col) {
 
     if (/^(DECIMAL|DEC|NUMERIC|DECFLOAT|ZONED)$/i.test(col.type))
         typeStr += `(${length},${decimals})`;
-    else if (/^(INTEGER|SMALLINT|BIGINT|TINYINT)$/i.test(col.type))
+    else if (/^(INT|INTEGER|SMALLINT|BIGINT|TINYINT)$/i.test(col.type))
         typeStr += length ? `(${length})` : '';
     else if (/^(CHAR|VARCHAR|GRAPHIC|VARGRAPHIC|CLOB|BLOB|DBCLOB|XML|UTF8_CHAR|WCHAR|WVARCHAR|WLONGVARCHAR)$/i.test(col.type))
         typeStr += length ? `(${length})` : '';
@@ -285,7 +285,7 @@ function renderTable(json, resultsDiv) {
     let html = '<div class="scroll-table-wrapper">';
     html += '<table class="scroll-table"><colgroup></colgroup><thead><tr>';
 
-    const isRightAlignType = t => /^(DECIMAL|DEC|NUMERIC|DECFLOAT|ZONED|INTEGER|SMALLINT|BIGINT|TINYINT|FLOAT|REAL|DOUBLE|DATE|TIME|TIMESTAMP)$/i.test(t);
+    const isRightAlignType = t => /^(DECIMAL|DEC|NUMERIC|DECFLOAT|ZONED|INT|INTEGER|SMALLINT|BIGINT|TINYINT|FLOAT|REAL|DOUBLE|DATE|TIME|TIMESTAMP)$/i.test(t);
 
     if (colMeta) {
         for (const col of colMeta) {

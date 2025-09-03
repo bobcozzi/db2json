@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.0.4 - 03-SEPT-2025 - Added INT/INTEGER to Right-Justified Result Columns
+- Added INTEGER/INT to the list of datatypes that are automatically right-justified in the example DB2JSON.JS logic. (This was an oversight).
+
 ## 0.0.3 - UI/UX Updates - 25 AUGUST 2025
 - SQL Editor resizing:
   - The SQL input area resizes both horizontally and vertically using your mouse.
@@ -13,7 +16,7 @@
   - The SQL statements are saved to the browsers local storage.
   - The last (up to) 512 SQl statements are saved for easy recall.
   - Users may edit they SQL statement History or Clear the History via the two Edit/Clear buttons.
-- Submit mode is not POST by Default:
+- Submit mode is now POST by Default:
   - To hide the SQL CGI requests, we moved from the default GET option to POST.  Users (developers) may modify it back to GET is that is the preference in your shop.
 - Formatting SQL Statements:
   - A context menu “Format SQL” has been added to improve the layout of the SQL statement in the editor window.
