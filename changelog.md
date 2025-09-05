@@ -4,6 +4,7 @@
 ## 0.0.4 - 04-SEPT-2025 -
 - Added INTEGER/INT to the list of datatypes that are automatically right-justified in the example DB2JSON.JS logic. (This was an oversight).
 - SQL Statement syntax checking was added. Now when a statement fails syntax checking, the SQL error is displayed and the cursor is placed at the error position. If possible, the "word" at the error position is selected for highlighting purposes.
+- The SQL CLIENT ID is now set to the Effective User Profile. So SQL register "CURRENT CLIENT_USERID" is now returned when requested.
 
 ## 0.0.3 - UI/UX Updates - 25 AUGUST 2025
 - SQL Editor resizing:
