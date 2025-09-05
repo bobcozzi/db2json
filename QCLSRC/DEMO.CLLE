@@ -6,7 +6,7 @@
              RTVJOBA    USER(&USRPRF)
              CHGVAR     VAR(&MYOUTPUT) VALUE('/home/' *TCAT &USRPRF +
                           *TCAT '/test_DB2JSON.json')
-             CHGVAR     VAR(&SQL) VALUE('select * from qiws.qcustcdt')
+             CHGVAR     VAR(&SQL) VALUE('SELECT * FROM QIWS.QCUSTCDT')
              /* Note: 3rd parm can be *REPLACE or -r to replace output file  */
              CALL       PGM(DB2JSON/DB2JSON) PARM(&SQL &MYOUTPUT '*REPLACE')
              SNDPGMMSG  MSG('DSPF ''' *CAT &MYOUTPUT *TCAT '''') +

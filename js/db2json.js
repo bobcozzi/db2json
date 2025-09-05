@@ -48,7 +48,7 @@ function initDb2jsonUI() {
     populateSqlHistoryDropdown();
     const dropdown = document.getElementById('sqlHistoryDropdown');
     if (dropdown) {
-        dropdown.addEventListener('change', function() {
+        dropdown.addEventListener('change', function () {
             if (dropdown.value) {
                 document.getElementById('sqlInput').value = dropdown.value;
             }
@@ -198,7 +198,7 @@ async function handleSqlSubmit(e) {
     copyTableBtn.classList.add('is-hidden');
 
     // Get the statement at the cursor
-    const { stmt: query } = getSQLStmtAtCursor(input, cursor);
+    const { stmt: query, start: start, end: end } = getSQLStmtAtCursor(input, cursor);
     try {
         const submitMode = (document.getElementById('submitMode')?.value) || 'GET';
         let response;
@@ -220,9 +220,9 @@ async function handleSqlSubmit(e) {
                 body: fd
             });
         }
-    errorDiv.textContent = 'Loading resultSet...';
-    errorDiv.style.background = 'none';
-    errorDiv.style.color = '#008800'; // dark 5250 green
+        errorDiv.textContent = 'Loading resultSet...';
+        errorDiv.style.background = 'none';
+        errorDiv.style.color = '#008800'; // dark 5250 green
         let text = await response.text();
 
         if (text.startsWith('%')) text = text.substring(1);
@@ -231,7 +231,36 @@ async function handleSqlSubmit(e) {
         const json = JSON.parse(text);
 
         if (json.error) {
-            errorDiv.textContent = `SQLSTATE: ${json.error.sqlstate || 'ERROR'} - ${json.error.msgtext || 'An error occurred.'}`;
+            if (String(json.error.sqlstate).toUpperCase() != 'SYNTAX') {
+                errorDiv.textContent = `SQLSTATE: ${json.error.sqlstate || 'ERROR'} - ${json.error.msgtext || 'An error occurred.'}`;
+            }
+            // If SYNTAX error, move caret to the offending column within the statement we ran
+            else {
+                errorDiv.textContent = `SYNTAX ERROR at pos: ${json.error.msgtext || 'An error occurred.'}`;
+                const ta = document.getElementById('sqlInput');
+                if (ta) {
+                    // Prefer explicit position if present, else parse leading integer "<n>,"
+                    let pos = 0;
+                    if (typeof json.error.position === 'number' && isFinite(json.error.position)) {
+                        pos = json.error.position;
+                    } else {
+                        const m = String(json.error.msgtext || '').match(/^\s*(\d+)\s*,/);
+                        if (m) pos = parseInt(m[1], 10);
+                    }
+
+                    // Clamp inside the statement we just executed
+                    let offset = start; // start/end from getSQLStmtAtCursor earlier in this function
+                    if (pos > 0) {
+                        offset = Math.max(start, Math.min(end, start + (pos - 1)));
+                    }
+
+                    // Compute token selection
+                    const { start: selStart, end: selEnd } = getNextSqlTokenRange(ta.value, offset, start, end);
+
+                    ta.focus();
+                    ta.setSelectionRange(selStart, selEnd);
+                }
+            }
             return;
         }
 
@@ -240,9 +269,9 @@ async function handleSqlSubmit(e) {
         populateSqlHistoryDropdown();
 
         renderTable(json, resultsDiv);
-    errorDiv.textContent = '';  // remove loading resultset message
-    errorDiv.style.background = 'none';
-    errorDiv.style.color = '#B71C1C'; // revert to red text
+        errorDiv.textContent = '';  // remove loading resultset message
+        errorDiv.style.background = 'none';
+        errorDiv.style.color = '#B71C1C'; // revert to red text
         copyTableBtn.classList.remove('is-hidden');
         copyTableBtn.onclick = () => copyTableToClipboard(resultsDiv);
     } catch (err) {
@@ -517,7 +546,7 @@ function copySqlInput() {
     document.addEventListener('click', () => { menu.style.display = 'none'; });
     window.addEventListener('blur', () => { menu.style.display = 'none'; });
 
-    textarea.addEventListener('contextmenu', function(e) {
+    textarea.addEventListener('contextmenu', function (e) {
         e.preventDefault();
         menu.style.left = e.pageX + 'px';
         menu.style.top = e.pageY + 'px';
@@ -526,7 +555,7 @@ function copySqlInput() {
 
     menu.addEventListener('contextmenu', e => e.preventDefault());
 
-    menu.querySelector('#formatSqlMenuItem').addEventListener('click', function() {
+    menu.querySelector('#formatSqlMenuItem').addEventListener('click', function () {
         menu.style.display = 'none';
         const input = textarea.value;
         const selectionStart = textarea.selectionStart;
@@ -585,19 +614,19 @@ function getSqlHistory() {
         // Prefer semicolon-based splitting to match editor and textarea behavior
         try {
             arr = splitSqlStatementsBySemicolon(raw)
-                .map(s => s.replace(/;\s*$/,'').trim())
+                .map(s => s.replace(/;\s*$/, '').trim())
                 .filter(Boolean);
         } catch (_) { arr = []; }
         // Fallback to splitting on blank lines if semicolons weren't present
         if (arr.length === 0) {
-            arr = raw.replace(/\r\n/g,'\n')
+            arr = raw.replace(/\r\n/g, '\n')
                 .split(/\n\s*\n+/)
                 .map(s => s.trim())
                 .filter(Boolean);
         }
     }
     // Persist back as proper JSON array for future loads
-    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr)); } catch (_) {}
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr)); } catch (_) { }
     return arr;
 }
 
@@ -716,7 +745,7 @@ function saveEditedHistory() {
     if (!ta) return;
     // Split on unquoted semicolons to preserve multi-line statements
     let blocks = splitSqlStatementsBySemicolon(ta.value.replace(/\r\n/g, '\n'))
-        .map(s => s.replace(/;\s*$/,'').trim())
+        .map(s => s.replace(/;\s*$/, '').trim())
         .filter(Boolean);
     if (blocks.length > MAX_SQL_HISTORY) blocks = blocks.slice(0, MAX_SQL_HISTORY);
     localStorage.setItem(HISTORY_KEY, JSON.stringify(blocks));
@@ -747,27 +776,85 @@ function splitSqlStatementsBySemicolon(input) {
 }
 
 function attachSqlInputResizeSync() {
-  // Tear down any previous observers/listeners
-  if (window._db2jsonRO && window._db2jsonRO.disconnect) window._db2jsonRO.disconnect();
-  window._db2jsonRO = null;
-  if (window._db2jsonWinResize) {
-    window.removeEventListener('resize', window._db2jsonWinResize);
-    window._db2jsonWinResize = null;
-  }
+    // Tear down any previous observers/listeners
+    if (window._db2jsonRO && window._db2jsonRO.disconnect) window._db2jsonRO.disconnect();
+    window._db2jsonRO = null;
+    if (window._db2jsonWinResize) {
+        window.removeEventListener('resize', window._db2jsonWinResize);
+        window._db2jsonWinResize = null;
+    }
 
-  const ta = document.getElementById('sqlInput');
-  const container = document.querySelector('.textarea-btn-container');
-  if (!ta) return;
+    const ta = document.getElementById('sqlInput');
+    const container = document.querySelector('.textarea-btn-container');
+    if (!ta) return;
 
-  // Remove stale inline sizes that cap growth
-  ta.style.removeProperty('width');       // let CSS width:min(80vw,1200px) apply
-  ta.style.removeProperty('height');      // let CSS height:30vh apply
-  if (container) container.style.removeProperty('width'); // let inline-block shrink-wrap
+    // Remove stale inline sizes that cap growth
+    ta.style.removeProperty('width');       // let CSS width:min(80vw,1200px) apply
+    ta.style.removeProperty('height');      // let CSS height:30vh apply
+    if (container) container.style.removeProperty('width'); // let inline-block shrink-wrap
 
-  // Make textarea the only resizable element
-  ta.style.maxWidth = '100%';
-  ta.style.resize = 'both';
-  ta.style.overflow = 'auto';
+    // Make textarea the only resizable element
+    ta.style.maxWidth = '100%';
+    ta.style.resize = 'both';
+    ta.style.overflow = 'auto';
 
-  // No ResizeObserver, no window resize handler. CSS controls layout now.
+    // No ResizeObserver, no window resize handler. CSS controls layout now.
+}
+
+function splitSqlStatementsBySemicolon(input) {
+    const out = [];
+    let inSingle = false, inDouble = false;
+    let start = 0;
+    for (let i = 0; i < input.length; i++) {
+        const c = input[i];
+        if (c === "'" && !inDouble) {
+            inSingle = !inSingle;
+        } else if (c === '"' && !inSingle) {
+            inDouble = !inDouble;
+        } else if (c === ';' && !inSingle && !inDouble) {
+            const part = input.slice(start, i).trim();
+            if (part) out.push(part);
+            start = i + 1;
+        }
+    }
+    const last = input.slice(start).trim();
+    if (last) out.push(last);
+    return out;
+}
+
+// Select the next SQL "word" (token) starting at or after idx within [stmtStart, stmtEnd]
+function getNextSqlTokenRange(text, idx, stmtStart, stmtEnd) {
+    const max = Math.min(text.length, stmtEnd);
+    let i = Math.max(stmtStart, Math.min(idx, max));
+
+    // Skip whitespace
+    while (i < max && /\s/.test(text[i])) i++;
+    if (i >= max) return { start: max, end: max };
+
+    const ch = text[i];
+
+    // Quoted identifier or string literal: "name" or 'literal' (support doubled quotes)
+    if (ch === '"' || ch === "'") {
+        const q = ch;
+        let j = i + 1;
+        while (j < max) {
+            if (text[j] === q) {
+                if (j + 1 < max && text[j + 1] === q) { j += 2; continue; } // escaped ""
+                j++; break; // include closing quote
+            }
+            j++;
+        }
+        return { start: i, end: Math.min(j, max) };
+    }
+
+    // Identifier/number token (allow ., _, @, $, # in identifiers; schema separators .)
+    const isIdChar = c => /[A-Za-z0-9_@$#]/.test(c);
+    if (isIdChar(ch)) {
+        let j = i + 1;
+        while (j < max && (isIdChar(text[j]) || text[j] === '.')) j++;
+        return { start: i, end: j };
+    }
+
+    // Otherwise, treat single punctuation/operator as the token
+    return { start: i, end: i + 1 };
 }
