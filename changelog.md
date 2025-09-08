@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 0.0.5 - 08-SEPT-2025 -
+- Corrected a small issue with how ASCII to EBCDIC to ASCII was handled.
+- Renamed the "Copy Table" button to "Copy ResultSet" to more clearly describe its purpose.
+
 ## 0.0.4 - 04-SEPT-2025 -
 - Added INTEGER/INT to the list of datatypes that are automatically right-justified in the example DB2JSON.JS logic. (This was an oversight).
 - SQL Statement syntax checking was added. Now when a statement fails syntax checking, the SQL error is displayed and the cursor is placed at the error position. If possible, the "word" at the error position is selected for highlighting purposes.
