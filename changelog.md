@@ -1,6 +1,11 @@
 # Changelog
 
 
+## 0.0.5 - 09-SEPT-2025 -
+- Added new Open SQL from file, Save SQL to file and Save SQL To file as... buttons. These only work on HTTPS environments unless you are access your IBM i via the http://localhost or https://localhost link. But http://<myipaddress> will disable most of this capability.
+- The Copy SQL statements to clipboard icon was relocated to our new Toolbar. No all 4 icons are in one place.
+- No changes were made to the host DB2JSON.cpp source.
+
 ## 0.0.5 - 08-SEPT-2025 -
 - Corrected a small issue with how ASCII to EBCDIC to ASCII was handled.
 - Renamed the "Copy Table" button to "Copy ResultSet" to more clearly describe its purpose.

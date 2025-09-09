@@ -2,22 +2,134 @@
 const MAX_SQL_HISTORY = 512;
 const HISTORY_KEY = 'db2json_SQL_History';
 
+// Optional: keep handles if the browser supports the File System Access API
+let _lastFileHandle = null;
+let _lastFileName = null;
+
+// Utilities for toasts
+if (typeof window.showToast !== 'function') {
+  function showToast(message, type = 'info', durationMs = 6000) {
+    let container = document.getElementById('toastContainer');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'toastContainer';
+      container.className = 'toast-container';
+      document.body.appendChild(container);
+    }
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    const msgSpan = document.createElement('span');
+    msgSpan.className = 'toast-msg';
+    msgSpan.textContent = String(message); // safe text insertion
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'toast-close';
+    closeBtn.setAttribute('aria-label', 'Dismiss');
+    closeBtn.textContent = '×';
+    el.appendChild(msgSpan);
+    el.appendChild(closeBtn);
+    const close = () => {
+      el.classList.add('hide');
+      setTimeout(() => el.remove(), 250);
+    };
+    closeBtn.addEventListener('click', close);
+    container.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(close, Math.max(1000, durationMs | 0));
+  }
+}
+
+if (typeof window.supportsFileSystemAccess !== 'function') {
+  function supportsFileSystemAccess() {
+    return window.isSecureContext &&
+           typeof window.showOpenFilePicker === 'function' &&
+           typeof window.showSaveFilePicker === 'function';
+  }
+}
+
+if (typeof window.maybeShowSaveUnsupportedNotice !== 'function') {
+  function maybeShowSaveUnsupportedNotice(reason = 'context') {
+    try {
+      const key = reason === 'fallback' ? 'db2json_save_notice_fallback' : 'db2json_save_notice_ctx';
+      if (sessionStorage.getItem(key) === '1') return;
+      const msg = reason === 'fallback'
+        ? '“Save SQL Statements to local File” is unavailable in this browser without HTTP prototocl. Use “Save SQL As...”, or open over HTTPS or in Chrome/Edge from http://localhost to enable.'
+        : 'Save SQL Statements to local file is unavailable for http (requires HTTPS). “Save As...” may work, but will save to your downloads folder, or use HTTPS or http://localhost works in Chrome/Edge.';
+      showToast(msg, 'warn', 10000);
+      sessionStorage.setItem(key, '1');
+    } catch {}
+  }
+}
+
+// Hook: after your Save state update, show the context toast if unsupported
+(function hookSaveStateNotice(){
+  const orig = window.updateSaveButtonsState;
+  window.updateSaveButtonsState = function patchedUpdateSaveButtonsState() {
+    try { if (typeof orig === 'function') orig(); } catch {}
+    try { if (!supportsFileSystemAccess()) maybeShowSaveUnsupportedNotice('context'); } catch {}
+  };
+})();
+
+// Hook: after fallback Open, show the fallback toast
+(function hookOpenFallbackNotice(){
+  const origOpen = window.openSqlFile;
+  if (typeof origOpen === 'function') {
+    window.openSqlFile = async function patchedOpenSqlFile() {
+      const result = await origOpen.apply(this, arguments);
+      // If Save is still disabled (likely fallback) and we don’t have a handle, notify once
+      try {
+        const saveBtn = document.getElementById('saveSqlBtn');
+        const noHandle = !window._lastFileHandle;
+        if (saveBtn && saveBtn.disabled && noHandle) {
+          maybeShowSaveUnsupportedNotice('fallback');
+        }
+      } catch {}
+      return result;
+    };
+  }
+})();
+
+// Also trigger the context notice once on DOM ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    try { if (!supportsFileSystemAccess()) maybeShowSaveUnsupportedNotice('context'); } catch {}
+  });
+} else {
+  try { if (!supportsFileSystemAccess()) maybeShowSaveUnsupportedNotice('context'); } catch {}
+}
+
+function ensureSqlExt(name) {
+    name = (name || '').trim();
+    if (!name) return 'query.sql';
+    return /\.(sql|txt)$/i.test(name) ? name : name + '.sql';
+}
+
+// Remove any stray tokens or truncated inserts
+// (e.g., lines like "any stray to", "updateCopySqlEnabled", "st pickerOp", single "c")
+
+// Keep copy button disabled when textarea empty
+function updateCopySqlEnabled() {
+    const btn = document.getElementById('copySqlInputBtn');
+    const ta = document.getElementById('sqlInput');
+    if (!btn || !ta) return;
+    const hasText = (ta.value || '').trim().length > 0;
+    btn.disabled = !hasText;
+    btn.setAttribute('aria-disabled', String(!hasText));
+}
+
 function initDb2jsonUI() {
     if (window._db2jsonInited) return;
     window._db2jsonInited = true;
+
     const copyTableBtn = document.getElementById('copyTableBtn');
     const sqlForm = document.getElementById('sqlForm');
     const copySqlInputBtn = document.getElementById('copySqlInputBtn');
     const textarea = document.getElementById('sqlInput');
     const submitModeSel = document.getElementById('submitMode');
 
-    // Hide copy table button initially
     if (copyTableBtn) copyTableBtn.classList.add('is-hidden');
-
-    // Register event handlers
     if (sqlForm) sqlForm.addEventListener('submit', handleSqlSubmit);
     if (copySqlInputBtn) copySqlInputBtn.addEventListener('click', copySqlInput);
-    // Optional: adjust form attributes for visibility/testing (fetch ignores these but helps dev tools)
+
     if (submitModeSel) {
         submitModeSel.addEventListener('change', () => {
             const form = document.getElementById('sqlForm');
@@ -34,63 +146,57 @@ function initDb2jsonUI() {
                 form.enctype = 'multipart/form-data';
             }
         });
-        // initialize once
         submitModeSel.dispatchEvent(new Event('change'));
     }
 
-    // Sticky tfoot/table resize
-    const resultsDiv = document.getElementById('results');
-    if (resultsDiv) {
-        window.addEventListener('resize', () => adjustTableMaxHeight(resultsDiv));
-    }
-
-    // --- SQL History Dropdown ---
+    // History dropdown + actions (keep existing buttons)
     populateSqlHistoryDropdown();
     const dropdown = document.getElementById('sqlHistoryDropdown');
     if (dropdown) {
-        dropdown.addEventListener('change', function () {
-            if (dropdown.value) {
-                document.getElementById('sqlInput').value = dropdown.value;
-            }
-            // Update copy button enabled/disabled when selection changes
+        dropdown.addEventListener('change', () => {
+            if (dropdown.value) document.getElementById('sqlInput').value = dropdown.value;
             updateCopySqlEnabled();
         });
     }
-
-    // Keep copy button disabled when textarea empty
-    function updateCopySqlEnabled() {
-        const btn = document.getElementById('copySqlInputBtn');
-        const ta = document.getElementById('sqlInput');
-        if (!btn || !ta) return;
-        const hasText = (ta.value || '').trim().length > 0;
-        btn.disabled = !hasText;
-        btn.setAttribute('aria-disabled', String(!hasText));
-    }
-    if (textarea) {
-        textarea.addEventListener('input', updateCopySqlEnabled);
-        // Initialize state on load
-        updateCopySqlEnabled();
-    }
-    // History actions
     const clearBtn = document.getElementById('clearSqlHistoryBtn');
     const editBtn = document.getElementById('editSqlHistoryBtn');
     if (clearBtn) clearBtn.addEventListener('click', clearSqlHistory);
     if (editBtn) editBtn.addEventListener('click', openEditHistoryModal);
-
     const modal = document.getElementById('historyModal');
-    const saveBtn = document.getElementById('historySaveBtn');
+    const saveHistBtn = document.getElementById('historySaveBtn');
     const cancelBtn = document.getElementById('historyCancelBtn');
-    if (saveBtn) saveBtn.addEventListener('click', saveEditedHistory);
+    if (saveHistBtn) saveHistBtn.addEventListener('click', saveEditedHistory);
     if (cancelBtn) cancelBtn.addEventListener('click', closeEditHistoryModal);
-    if (modal) modal.addEventListener('click', (e) => {
-        if (e.target === modal) closeEditHistoryModal();
-    });
+    if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) closeEditHistoryModal(); });
 
-    // Attach textarea → controls width sync after UI is in the DOM
+    // Copy button enable/disable
+    if (textarea) {
+        textarea.addEventListener('input', updateCopySqlEnabled);
+        updateCopySqlEnabled();
+    }
+
+    // Layout sync for toolbar positioning
     attachSqlInputResizeSync();
+
+    // Toolbar: Open/Save/Save As
+    const openBtn = document.getElementById('openSqlFileBtn');
+    if (openBtn) openBtn.addEventListener('click', openSqlFile);
+
+    const saveBtn = document.getElementById('saveSqlBtn');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+            const ok = await saveSqlToCurrentFile();
+            if (!ok) await saveSqlAsFile();
+        });
+    }
+
+    const saveAsBtn = document.getElementById('saveSqlFileBtn');
+    if (saveAsBtn) saveAsBtn.addEventListener('click', saveSqlAsFile);
+
+    updateSaveButtonsState();
 }
 
-// Run init now if DOM is ready; otherwise wait for DOMContentLoaded
+// Initialize once DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initDb2jsonUI);
 } else {
@@ -801,60 +907,270 @@ function attachSqlInputResizeSync() {
     // No ResizeObserver, no window resize handler. CSS controls layout now.
 }
 
-function splitSqlStatementsBySemicolon(input) {
-    const out = [];
-    let inSingle = false, inDouble = false;
-    let start = 0;
-    for (let i = 0; i < input.length; i++) {
-        const c = input[i];
-        if (c === "'" && !inDouble) {
-            inSingle = !inSingle;
-        } else if (c === '"' && !inSingle) {
-            inDouble = !inDouble;
-        } else if (c === ';' && !inSingle && !inDouble) {
-            const part = input.slice(start, i).trim();
-            if (part) out.push(part);
-            start = i + 1;
+
+// Open: load a .sql/.txt file into the textarea
+async function openSqlFile() {
+    const ta = document.getElementById('sqlInput');
+    if (!ta) return;
+
+    if (window.showOpenFilePicker && window.isSecureContext) {
+        try {
+            const [handle] = await window.showOpenFilePicker({
+                id: 'db2json-sql',
+                multiple: false,
+                types: [{ description: 'SQL Files', accept: { 'text/plain': ['.sql', '.txt'] } }],
+                excludeAcceptAllOption: false
+            });
+            _lastFileHandle = handle;
+            const file = await handle.getFile();
+            _lastFileName = file.name;
+            const text = await file.text();
+            ta.value = text;
+            ta.focus();
+            ta.setSelectionRange(0, 0);
+            updateCopySqlEnabled();
+            updateSaveButtonsState();
+            return true;
+        } catch (e) {
+            if (e?.name === 'AbortError') return false;
+            console.error('openSqlFile picker failed:', e);
+            // fall through
         }
     }
-    const last = input.slice(start).trim();
-    if (last) out.push(last);
-    return out;
+
+    // Fallback: hidden <input type="file">
+    const input = document.getElementById('sqlFileInput');
+    if (!input) return false;
+    return await new Promise(resolve => {
+        input.value = '';
+        input.onchange = async () => {
+            try {
+                const file = input.files && input.files[0];
+                if (!file) return resolve(false);
+                _lastFileHandle = null;               // no persistent handle in fallback
+                _lastFileName = file.name;
+                const text = await file.text();
+                ta.value = text;
+                ta.focus();
+                ta.setSelectionRange(0, 0);
+                updateCopySqlEnabled();
+                updateSaveButtonsState();             // Save stays disabled in fallback
+                maybeShowSaveUnsupportedNotice('fallback');
+                resolve(true);
+            } catch (err) {
+                console.error('openSqlFile fallback failed:', err);
+                resolve(false);
+            }
+        };
+        input.click();
+    });
 }
 
-// Select the next SQL "word" (token) starting at or after idx within [stmtStart, stmtEnd]
-function getNextSqlTokenRange(text, idx, stmtStart, stmtEnd) {
-    const max = Math.min(text.length, stmtEnd);
-    let i = Math.max(stmtStart, Math.min(idx, max));
+// Save As: native dialog when available; fallback uses last file name
+async function saveSqlAsFile() {
+    const ta = document.getElementById('sqlInput');
+    if (!ta) return false;
+    const text = ta.value ?? '';
+    const suggestedName = (_lastFileHandle?.name) || _lastFileName || 'query.sql';
 
-    // Skip whitespace
-    while (i < max && /\s/.test(text[i])) i++;
-    if (i >= max) return { start: max, end: max };
-
-    const ch = text[i];
-
-    // Quoted identifier or string literal: "name" or 'literal' (support doubled quotes)
-    if (ch === '"' || ch === "'") {
-        const q = ch;
-        let j = i + 1;
-        while (j < max) {
-            if (text[j] === q) {
-                if (j + 1 < max && text[j + 1] === q) { j += 2; continue; } // escaped ""
-                j++; break; // include closing quote
-            }
-            j++;
+    if (window.showSaveFilePicker && window.isSecureContext) {
+        try {
+            const handle = await window.showSaveFilePicker({
+                id: 'db2json-sql',
+                suggestedName,
+                types: [{ description: 'SQL Files', accept: { 'text/plain': ['.sql', '.txt'] } }]
+            });
+            const writable = await handle.createWritable();
+            await writable.write(new Blob([text], { type: 'text/plain' }));
+            await writable.close();
+            _lastFileHandle = handle;               // now we have a handle → Save can enable
+            _lastFileName = handle.name;
+            updateSaveButtonsState();
+            return true;
+        } catch (e) {
+            if (e?.name === 'AbortError') return false;
+            console.error('saveSqlAsFile picker failed:', e);
         }
-        return { start: i, end: Math.min(j, max) };
     }
 
-    // Identifier/number token (allow ., _, @, $, # in identifiers; schema separators .)
-    const isIdChar = c => /[A-Za-z0-9_@$#]/.test(c);
-    if (isIdChar(ch)) {
-        let j = i + 1;
-        while (j < max && (isIdChar(text[j]) || text[j] === '.')) j++;
-        return { start: i, end: j };
+    // Fallback: download-style, but use last/opened name
+    const nameInput = prompt('Save SQL as filename:', suggestedName);
+    if (nameInput === null) return false;
+    const finalName = ensureSqlExt(nameInput);
+    try {
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = finalName;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+        _lastFileName = finalName;
+        updateSaveButtonsState();
+        return true;
+    } catch (err) {
+        console.error('saveSqlAsFile download failed:', err);
+        return false;
+    }
+}
+
+// True “Save” to the opened file (no dialog), when permitted
+async function saveSqlToCurrentFile() {
+    if (!(_lastFileHandle && window.isSecureContext)) return false;
+    const ta = document.getElementById('sqlInput');
+    if (!ta) return false;
+    try {
+        if (typeof _lastFileHandle.requestPermission === 'function') {
+            const perm = await _lastFileHandle.requestPermission({ mode: 'readwrite' });
+            if (perm !== 'granted') return false;
+        }
+        const writable = await _lastFileHandle.createWritable();
+        await writable.write(new Blob([ta.value ?? ''], { type: 'text/plain' }));
+        await writable.close();
+        return true;
+    } catch (e) {
+        console.error('saveSqlToCurrentFile failed:', e);
+        return false;
+    }
+}
+
+// In initDb2jsonUI: wire Save/Save As and keep buttons updated
+function initDb2jsonUI() {
+    if (window._db2jsonInited) return;
+    window._db2jsonInited = true;
+
+    const copyTableBtn = document.getElementById('copyTableBtn');
+    const sqlForm = document.getElementById('sqlForm');
+    const copySqlInputBtn = document.getElementById('copySqlInputBtn');
+    const textarea = document.getElementById('sqlInput');
+    const submitModeSel = document.getElementById('submitMode');
+
+    // Hide copy table button initially
+    if (copyTableBtn) copyTableBtn.classList.add('is-hidden');
+
+    // Register event handlers
+    if (sqlForm) sqlForm.addEventListener('submit', handleSqlSubmit);
+    if (copySqlInputBtn) copySqlInputBtn.addEventListener('click', copySqlInput);
+
+    if (submitModeSel) {
+        submitModeSel.addEventListener('change', () => {
+            const form = document.getElementById('sqlForm');
+            if (!form) return;
+            const mode = submitModeSel.value || 'GET';
+            if (mode === 'GET') {
+                form.method = 'get';
+                form.enctype = 'application/x-www-form-urlencoded';
+            } else if (mode === 'POST_URLENC') {
+                form.method = 'post';
+                form.enctype = 'application/x-www-form-urlencoded';
+            } else {
+                form.method = 'post';
+                form.enctype = 'multipart/form-data';
+            }
+        });
+        submitModeSel.dispatchEvent(new Event('change'));
     }
 
-    // Otherwise, treat single punctuation/operator as the token
-    return { start: i, end: i + 1 };
+    // --- SQL History Dropdown ---
+    populateSqlHistoryDropdown();
+    const dropdown = document.getElementById('sqlHistoryDropdown');
+    if (dropdown) {
+        dropdown.addEventListener('change', function () {
+            if (dropdown.value) {
+                document.getElementById('sqlInput').value = dropdown.value;
+            }
+            // Update copy button enabled/disabled when selection changes
+            updateCopySqlEnabled();
+        });
+    }
+
+    // Wire copy enabled state to textarea input
+    if (textarea) {
+        textarea.addEventListener('input', updateCopySqlEnabled);
+        updateCopySqlEnabled();
+    }
+
+    // History actions
+    const clearBtn = document.getElementById('clearSqlHistoryBtn');
+    const editBtn = document.getElementById('editSqlHistoryBtn');
+    if (clearBtn) clearBtn.addEventListener('click', clearSqlHistory);
+    if (editBtn) editBtn.addEventListener('click', openEditHistoryModal);
+
+    const modal = document.getElementById('historyModal');
+    const saveHistBtn = document.getElementById('historySaveBtn');
+    const cancelBtn = document.getElementById('historyCancelBtn');
+    if (saveHistBtn) saveHistBtn.addEventListener('click', saveEditedHistory);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeEditHistoryModal);
+    if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) closeEditHistoryModal(); });
+
+    // Layout sync
+    attachSqlInputResizeSync();
+
+    // File Open/Save – do NOT set textContent; icons are handled by CSS
+    const openBtn = document.getElementById('openSqlFileBtn');
+    if (openBtn) openBtn.addEventListener('click', openSqlFile);
+
+    const saveBtn = document.getElementById('saveSqlBtn');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+            const ok = await saveSqlToCurrentFile();
+            if (!ok) await saveSqlAsFile();
+        });
+    }
+
+    const saveAsBtn = document.getElementById('saveSqlFileBtn');
+    if (saveAsBtn) saveAsBtn.addEventListener('click', saveSqlAsFile);
+
+    updateSaveButtonsState();
+}
+
+
+// Keep copy button disabled when textarea empty
+function updateCopySqlEnabled() {
+    const btn = document.getElementById('copySqlInputBtn');
+    const ta = document.getElementById('sqlInput');
+    if (!btn || !ta) return;
+    const hasText = (ta.value || '').trim().length > 0;
+    btn.disabled = !hasText;
+    btn.setAttribute('aria-disabled', String(!hasText));
+}
+
+
+// History actions
+const clearBtn = document.getElementById('clearSqlHistoryBtn');
+const editBtn = document.getElementById('editSqlHistoryBtn');
+if (clearBtn) clearBtn.addEventListener('click', clearSqlHistory);
+if (editBtn) editBtn.addEventListener('click', openEditHistoryModal);
+
+const modal = document.getElementById('historyModal');
+const saveHistBtn = document.getElementById('historySaveBtn');
+const cancelBtn = document.getElementById('historyCancelBtn');
+if (saveHistBtn) saveHistBtn.addEventListener('click', saveEditedHistory);
+if (cancelBtn) cancelBtn.addEventListener('click', closeEditHistoryModal);
+if (modal) modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeEditHistoryModal();
+});
+
+// Attach textarea → controls width sync after UI is in the DOM
+attachSqlInputResizeSync();
+
+// Wire file Open/Save (no folder picker)
+const openBtn = document.getElementById('openSqlFileBtn');
+if (openBtn) {
+    openBtn.textContent = 'Open SQL File...';
+    openBtn.addEventListener('click', openSqlFile);
+}
+const saveBtn = document.getElementById('saveSqlBtn');
+if (saveBtn) {
+    saveBtn.textContent = 'Save';
+    saveBtn.addEventListener('click', async () => {
+        const ok = await saveSqlToCurrentFile();
+        if (!ok) await saveSqlAsFile();
+    });
+}
+const saveAsBtn = document.getElementById('saveSqlFileBtn');
+if (saveAsBtn) {
+    saveAsBtn.textContent = 'Save SQL as...';
+    saveAsBtn.addEventListener('click', saveSqlAsFile);
 }

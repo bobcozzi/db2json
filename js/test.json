@@ -1,6 +1,0 @@
-{"error": {
-        "sqlstate": "SYNTAX",
-        "position": "��",
-        "msgtext": "16, Token CLIENTX_USERID was not valid. Valid tokens: DATE TIME TIMESTAMP SERVER TIMEZONE DEGREE."
-    }
-}

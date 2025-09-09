@@ -5,11 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bob Cozzi's Db2JSON Test Composer using SQL</title>
+
     <link id="db2JSON_maincss" rel="stylesheet" href="css/db2json.css">
-    <!-- Placeholders; src is assigned at the bottom with a ?v= parameter -->
     <script id="db2JSON_sqlfmtjs"></script>
     <script id="db2JSON_sqlhistjs"></script>
-
+    <script id="db2JSON_mainjs"></script>
 </head>
 
 <body>
@@ -34,24 +34,38 @@
             <div class="sql-textarea-row">
                 <div class="textarea-btn-container">
                     <textarea id="sqlInput" name="q" rows="6" cols="80"></textarea>
-                    <button id="copySqlInputBtn" type="button" title="Copy your SQL stmt to the clipboard"
-                        class="copy-sql-btn" aria-label="Copy SQL to clipboard">
-                        <span class="copy-icon-wrapper">
-                            <svg class="copy-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"
-                                xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-                                <rect x="5" y="3" width="11" height="14" rx="2" fill="#fff" stroke="#555"
-                                    stroke-width="1.5" />
-                                <rect x="2.5" y="6" width="11" height="11" rx="2" fill="#f5f5f5" stroke="#bbb"
-                                    stroke-width="1.2" />
-                            </svg>
-                            <span class="copy-checkmark-feedback"></span>
-                        </span>
-                        <span class="copy-sql-btn-label">Copy</span>
-                    </button>
+
+                    <div class="textarea-toolbar" role="toolbar" aria-label="SQL editor tools">
+                        <!-- Open -->
+                        <button id="openSqlFileBtn" type="button" class="tool-btn icon-open" title="Open SQL File..." aria-label="Open SQL File"></button>
+
+                        <!-- Save -->
+                        <button id="saveSqlBtn" type="button" class="tool-btn icon-save" title="Save SQL to file" aria-label="Save" disabled></button>
+
+                        <!-- Save As -->
+                        <button id="saveSqlFileBtn" type="button" class="tool-btn icon-saveas" title="Save SQL as..." aria-label="Save SQL as"></button>
+
+                        <!-- Copy (original markup preserved for checkmark feedback) -->
+                        <button id="copySqlInputBtn" type="button" class="tool-btn copy-sql-btn"
+                                title="Copy SQL to clipboard" aria-label="Copy SQL to clipboard">
+                            <span class="copy-icon-wrapper">
+                                <svg class="copy-icon tool-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"
+                                     xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                                    <rect x="5" y="3" width="11" height="14" rx="2" fill="#fff" stroke="#555" stroke-width="1.5" />
+                                    <rect x="2.5" y="6" width="11" height="11" rx="2" fill="#f5f5f5" stroke="#bbb" stroke-width="1.2" />
+                                </svg>
+                                <span class="copy-checkmark-feedback"></span>
+                            </span>
+                            <span class="copy-sql-btn-label">Copy</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
     </form>
+
+    <!-- Hidden file input for Open fallback (Firefox/Safari and non-secure contexts) -->
+    <input id="sqlFileInput" type="file" accept=".sql,.txt" hidden />
 
     <div class="results-area">
         <div id="error"></div>
@@ -80,6 +94,7 @@
             SELECT CURRENT_DATE
             FROM X;
             "></textarea>
+
             <div class="modal-actions">
                 <button id="historySaveBtn" type="button">Save</button>
                 <button id="historyCancelBtn" type="button">Cancel</button>
@@ -87,8 +102,9 @@
         </div>
     </div>
 
-    <!-- App script placeholder; src will be assigned at the bottom with ?v= -->
-    <script id="db2JSON_mainjs"></script>
+    <!-- Toast notifications -->
+    <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
     <script>
         // Place at bottom so DOM elements exist when assigning versioned URLs
         // Dev: append ?v=Date.now() automatically
@@ -103,12 +119,12 @@
         const mainjs = document.getElementById('db2JSON_mainjs');
         const fmtJS = document.getElementById('db2JSON_sqlfmtjs');
         const histJS = document.getElementById('db2JSON_sqlhistjs');
+
         if (mainCSS) mainCSS.href = withV('css/db2json.css');
         if (fmtJS) fmtJS.src = withV('js/db2json_sqlFmt.js');
         if (histJS) histJS.src = withV('js/db2json_sqlHist.js');
         if (mainjs) mainjs.src = withV('js/db2json.js');
     </script>
-
 </body>
 
 </html>
