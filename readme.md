@@ -25,10 +25,36 @@ For a description of the JSON that is produced look here: [JSON Structure Docume
 5. Copy db2json.html to to /www/apachedft/docs/db2json.html
 6. Add the following to your HTTPD.CONF file. If using the default instance, then that file is located at: `/www/apachedft/conf/httpd.conf` and may be edited by entering this Command:
    `edtf /www/apachedft/conf/httpd.conf`
+If you are using another instance, then use it instead of `apachedft`.
+Here are the HTTMD.conf settings you need to make it work.
+### Minimum Config:
+```
+# Redirect a: https://<mycooldomainName.com>/db2json to the index.html file in that folder
+Alias /db2query/ /www/apachedft/docs/db2json/
+
+# To support the CGI requests, the CGI program Db2JSON must be added
+# as a Script (ScriptAlias)
+ScriptAlias /db2json /qsys.lib/db2json.lib/db2json.pgm
 
 ```
-AliasMatch  ^/db2json/(.*)   /www/apachedft/docs/db2json/$1
-ScriptAlias  /db2json        /qsys.lib/db2json.lib/db2json.pgm
+### Full Config: w/Basic Authentication (e.g., Prompt for User Profile signon)
+```
+Alias /db2query/ /www/apachedft/docs/db2json/
+# If you want to secure it to your IBM i User Profiles, then add basic authentication details.
+<Directory /www/apachedft/docs/db2json>
+    Options +Indexes +FollowSymLinks
+    DirectoryIndex index.html
+    AuthType Basic
+    AuthName "Sign in with your IBM i profile"
+    UserID %%CLIENT%%
+    Require valid-user
+    PasswdFile %%SYSTEM%%
+</Directory>
+
+# To support the CGI requests, the CGI program Db2JSON needs to be
+# added as a Script (ScriptAlias) in this example, and if you want
+# it secured as well, then add the basic authentication details.
+ScriptAlias /db2json /qsys.lib/db2json.lib/db2json.pgm
 <Location /db2json>
     AuthType Basic
     AuthName "Sign in with your IBM i profile"

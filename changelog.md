@@ -1,7 +1,10 @@
 # Changelog
 
-
+## 0.0.7 - 10-SEPT-2025 -
 - Now when Db2JSON is run, it checks for and adds the `QIBM_CLI_MUTE_SPURIOUS_JOB_MSG=Y` environment variable. This reduces the noise produced by SQL CLI by asking it to filter excessive SQ99999 / HY010 messages from being sent to the joblog. The Job-level environment attribute `QIBM_CLI_MUTE_SPURIOUS_JOB_MSG` can be set to `Y` to enable this filtering. Db2JSON now automatically creates this environment variable and sets it to `Y` if the environment variable is not already defined. That is, it will create it, but will not change it.
+- Various bug fixed.
+- Renamed the db2json.html file to index.html
+- Updated the notes on configuration the HTTP Server on IBM i
 
 ## 0.0.6 - 09-SEPT-2025 -
 - Added new Open SQL from file, Save SQL to file and Save SQL To file as... buttons. These only work on HTTPS environments unless you are access your IBM i via the http://localhost or https://localhost link. But http://<myipaddress> will disable most of this capability.
