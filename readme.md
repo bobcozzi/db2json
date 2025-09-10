@@ -29,17 +29,22 @@ If you are using another instance, then use it instead of `apachedft`.
 Here are the HTTMD.conf settings you need to make it work.
 ### Minimum Config:
 ```
-# Redirect a: https://<mycooldomainName.com>/db2json to the index.html file in that folder
-Alias /db2query/ /www/apachedft/docs/db2json/
+# Redirect a: https://<mycooldomainName.com>/db2json to
+# the Db2JSON RUN SQL demo file named index.html in that folder.
+# The redirect handles only https://<domain>/db2query (with no trailing data)
+# While the AliasMatch handles everything else.
+RedirectMatch 301 ^/db2query$ /db2query/
+AliasMatch  ^/db2query/(.*)   /www/apachedft/docs/db2json/$1
 
 # To support the CGI requests, the CGI program Db2JSON must be added
 # as a Script (ScriptAlias)
 ScriptAlias /db2json /qsys.lib/db2json.lib/db2json.pgm
-
 ```
+
 ### Full Config: w/Basic Authentication (e.g., Prompt for User Profile signon)
 ```
-Alias /db2query/ /www/apachedft/docs/db2json/
+RedirectMatch 301 ^/db2query$  /db2query/
+AliasMatch  ^/db2query/(.*)    /www/apachedft/docs/db2json/$1
 # If you want to secure it to your IBM i User Profiles, then add basic authentication details.
 <Directory /www/apachedft/docs/db2json>
     Options +Indexes +FollowSymLinks
@@ -51,9 +56,9 @@ Alias /db2query/ /www/apachedft/docs/db2json/
     PasswdFile %%SYSTEM%%
 </Directory>
 
-# To support the CGI requests, the CGI program Db2JSON needs to be
+# To support CGI requests, the CGI program Db2JSON needs to be
 # added as a Script (ScriptAlias) in this example, and if you want
-# it secured as well, then add the basic authentication details.
+# it secured as well, then add basic authentication details.
 ScriptAlias /db2json /qsys.lib/db2json.lib/db2json.pgm
 <Location /db2json>
     AuthType Basic
