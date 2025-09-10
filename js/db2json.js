@@ -106,6 +106,30 @@ function ensureSqlExt(name) {
 // Remove any stray tokens or truncated inserts
 // (e.g., lines like "any stray to", "updateCopySqlEnabled", "st pickerOp", single "c")
 
+/**
+ * Returns the start and end indices of the SQL token (word) at the given offset.
+ * If offset is out of bounds, returns {start: offset, end: offset+1}
+ */
+function getNextSqlTokenRange(sql, offset, stmtStart, stmtEnd) {
+    // Clamp offset inside the statement
+    offset = Math.max(stmtStart, Math.min(stmtEnd - 1, offset));
+    // Find token boundaries (word characters or underscores)
+    const re = /[\w$#@]+/g;
+    let match;
+    let tokenStart = offset, tokenEnd = offset + 1;
+    while ((match = re.exec(sql)) !== null) {
+        const start = match.index;
+        const end = start + match[0].length;
+        if (offset >= start && offset < end) {
+            tokenStart = start;
+            tokenEnd = end;
+            break;
+        }
+    }
+    return { start: stmtStart + tokenStart, end: stmtStart + tokenEnd };
+}
+
+
 // Keep copy button disabled when textarea empty
 function updateCopySqlEnabled() {
     const btn = document.getElementById('copySqlInputBtn');
@@ -1123,17 +1147,6 @@ function initDb2jsonUI() {
     if (saveAsBtn) saveAsBtn.addEventListener('click', saveSqlAsFile);
 
     updateSaveButtonsState();
-}
-
-
-// Keep copy button disabled when textarea empty
-function updateCopySqlEnabled() {
-    const btn = document.getElementById('copySqlInputBtn');
-    const ta = document.getElementById('sqlInput');
-    if (!btn || !ta) return;
-    const hasText = (ta.value || '').trim().length > 0;
-    btn.disabled = !hasText;
-    btn.setAttribute('aria-disabled', String(!hasText));
 }
 
 

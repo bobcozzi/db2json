@@ -112,13 +112,15 @@
         const qs = location.search;
         const isDev = /(?:^|[?&])(dev|cachebust|nocache)=1(?:&|$)/.test(qs) ||
             location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-        const ver = isDev ? String(Date.now()) : null;
+        // const ver = isDev ? String(Date.now()) : null;
+        const ver = String(Date.now());
         const withV = (path) => ver ? `${path}?v=${ver}` : path;
 
         const mainCSS = document.getElementById('db2JSON_maincss');
         const mainjs = document.getElementById('db2JSON_mainjs');
         const fmtJS = document.getElementById('db2JSON_sqlfmtjs');
         const histJS = document.getElementById('db2JSON_sqlhistjs');
+        console.log(`mainjs=${withV('js/db2json.js')}`);
 
         if (mainCSS) mainCSS.href = withV('css/db2json.css');
         if (fmtJS) fmtJS.src = withV('js/db2json_sqlFmt.js');

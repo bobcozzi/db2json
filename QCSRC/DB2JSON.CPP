@@ -19,17 +19,21 @@
 #include <algorithm>
 #include <cctype>
 
+
 #include <unistd.h>
-#include <qusec.h>     /* For Qus_EC_t error code structure */
+#include <pwd.h>
+
 #include <fcntl.h>
 #include <ifs.h>
 #include <except.h>
 #include <leenv.h>
 #include <lecond.h>
+#include <qusec.h>     /* For Qus_EC_t error code structure */
 #include <qp0z1170.h>
 #include <QP0ZTRC.h>
 #include <qmhmovpm.h>
 #include <qmhrsnem.h>
+#include <qmhrtvm.h>
 #include <QWTRTVTA.h>
 #include <QTMHCGI.h>
 #include <langinfo.h>
@@ -76,20 +80,6 @@ using namespace std;
 #define SQL_ATTR_INVOKING_PGM (10037)
 #endif
 
-// Use this TOASCII define to control whether or not
-// quoted literals are translated to ASCII by the compiler
-// Since JSON is output in UTF-8, it is recommended to
-// #define TOASCII unless you HTTP server automatically
-// converts EBCDIC to ASCII.
-// On V7R4 and later, they support application/json and
-// properly convert JSON to ASCII (UTF-8)
-// But on V7R3 and earlier, you need to use "text/json" to
-// enable the auto-convert.
-// If you prefer to do the EBCDIC->ASCII yourself using
-// this program's iconv routines, then define TOASCII directly
-// without the preprocessor conditional wrapper.
-// But remember, in that context, the HTTP Content-type header
-// must be sent as EBCDIC not ASCII while the JSON data itself
 
 int globalError = 0;
 
@@ -135,6 +125,7 @@ void excp_monitor(_INTRPT_Hndlr_Parms_T * __ptr128 exp_info)
      return;
 }
 
+#define TOASCII
     // Set to '1' to enable conversion to ASCII
     // Set to '0' to disable automatic EBCDIC/ASCII conversion
 #ifdef TOASCII
@@ -183,6 +174,7 @@ struct json_symbols_t {
     const char* COL_COLHDR;
     const char* FIELDATTR;
     const char* DATA;
+    const char* POSITION;
     const char* ERROR;
     const char* SQLSTATE;
     const char* MSGTEXT;
@@ -224,6 +216,7 @@ const json_symbols_t json_ascii = {
     "colhdr",
     "attr",
     "data",
+    "\"position\"",
     "\"error\"",
     "\"sqlstate\"",
     "\"msgtext\"",
@@ -264,6 +257,7 @@ const json_symbols_t json_job = {
     "colhdr",
     "attr",
     "data",
+    "\"position\"",
     "\"error\"",
     "\"sqlstate\"",
     "\"msgtext\"",
@@ -298,7 +292,7 @@ const char* EBCDIC_Q    = "Q";
 const char  EBCDIC_SPACE = ' ';
 
 #define ifCheckError(_d, _rc, _h, _id, _t) \
-      if (checkError(_d, _rc, _h, _id, _t)==1) return 0;
+      if (checkError(_d, _rc, _h, _id, _t,"")==1) return 0;
 
 
 // Runtime pointer to selected JSON symbol set
@@ -308,16 +302,55 @@ const json_symbols_t* json = &json_ascii;
 // JSON output state flags
 bool g_attrOpen = false;
 bool g_dataOpen = false;
+// Constants
+const size_t MAX_LOB_SIZE = 1024 * 1024; // 1MB max inline LOB size
 
+// Describe columns
+struct Column
+{
+    std::string name;
+    std::string colhdr;
+    SQLSMALLINT type;
+    SQLUINTEGER size;
+    SQLSMALLINT decimals;
+    SQLSMALLINT nullable;
+};
+
+char *pMuteSpurious = NULL;   // envvar QIBM_CLI_MUTE_SPURIOUS_JOB_MSG
+bool g_rootOpen = false;
+char g_fileNameBuffer[4096];  // Global file name buffer
+CXLate toASCII;
+CXLate toEBCDIC;
+
+static inline size_t local_strnlen(const char* s, size_t max) {
+    const void* p = memchr(s, '\0', max);
+    return p ? static_cast<const char*>(p) - s : max;
+}
+
+static inline void local_trimRight(std::string& stg, const char* trimChars = " ") {
+    if (stg.empty()) return;
+    size_t found;
+    if (trimChars == NULL) {
+        found = stg.find_last_not_of(' ');
+    } else {
+        found = stg.find_last_not_of(trimChars);
+    }
+    if (found == std::string::npos) {
+        stg.clear();
+    } else if (found + 1 < stg.length()) {
+        stg.erase(found + 1);
+    }
+}
 
 // Forward declarations
 const char* cgi_getenv(const char* name);
 std::string jsonEscape(const std::string &input);
 std::string base64Encode(const unsigned char *data, size_t len);
-std::string cvtToASCII(const std::string& src);
+std::string cvtToASCII(const std::string& src, const int bForceConvert=false);
 std::string cvtToEBCDIC(const std::string& src);
 const char* sqlTypeToJSONText(int sqlType);
-bool openIFSFile(std::ofstream& ofs, const char* szFile, const char* fileOpt, int ccsid = 1208);
+bool openIFSFile(std::ofstream& ofs, const char* szFile, const char* fileOpt,
+                    int ccsid = 1208);
 
 // Input helpers and URL-decoders
 std::string urlDecodeASCII(const std::string& str);
@@ -325,7 +358,14 @@ std::string urlDecodeEBCDIC(const std::string& str);
 bool readRequestBody(int len, std::string& body);
 bool readGET(std::string& outSql);
 bool readPOST_XForm(const std::string& body, std::string& outSql);
-bool readPOST_Multipart(const std::string& ctype, const std::string& body, std::string& outSql);
+bool readPOST_Multipart(const std::string& ctype, const std::string& body,
+                std::string& outSql);
+int SQLSyntaxCheck( std::string& sqlStmt, std::string& rtnMsg );
+int checkError(std::ostream& output, SQLRETURN rc, SQLHANDLE handle,
+                SQLSMALLINT type,
+                const char* msg,
+                const char* diagID=NULL,
+                int   errPos = 0);
 
 
 // Log a message to the IBM i joblog using Qp0zLprintf, printf-style
@@ -342,26 +382,19 @@ void logSQLMsg(const char *fmt, ...)
     Qp0zLprintf("[db2json] %s\n", buffer);
 }
 
-// Constants
-const size_t MAX_LOB_SIZE = 1024 * 1024; // 1MB max inline LOB size
 
-// Describe columns
-struct Column
+int exitDb2Json(int rtnCode = 0)
 {
-    std::string name;
-    std::string colhdr;
-    SQLSMALLINT type;
-    SQLUINTEGER size;
-    SQLSMALLINT decimals;
-    SQLSMALLINT nullable;
-};
+    if (pMuteSpurious!=NULL)
+    {
+        char muteMsg[64];
+        sprintf(muteMsg,"QIBM_CLI_MUTE_SPURIOUS_JOB_MSG=%s", pMuteSpurious);
+        putenv(muteMsg);
+    }
+    return rtnCode;
+}
 
-// Helper to close open JSON arrays/objects before error output
-// Track if root object is open
-bool g_rootOpen = false;
-char g_fileNameBuffer[4096];  // Global file name buffer
-CXLate toASCII;
-CXLate toEBCDIC;
+
 
 // Helper to close open JSON arrays/objects before error output
 // Returns true if root was open, false if not
@@ -381,31 +414,49 @@ bool closeJsonNode(std::ostream& output) {
 }
 
 // Helper function to check and print CLI errors, and emit JSON error node
-int checkError(std::ostream& output, SQLRETURN rc, SQLHANDLE handle, SQLSMALLINT type, const char *msg)
+int checkError(std::ostream& output, SQLRETURN rc, SQLHANDLE handle, SQLSMALLINT type,
+                const char *msg,
+                const char* diagID,
+                int errPos )
 {
     if (rc == SQL_SUCCESS || rc == SQL_SUCCESS_WITH_INFO)
     {
         return 0;
     }
-    SQLCHAR sqlstate[6] = {0};
+    SQLCHAR sqlstate[11] = {0};
     SQLCHAR message[SQL_MAX_MESSAGE_LENGTH+1] = {0};
     SQLINTEGER nativeError = 0;
     SQLSMALLINT textLen = 0;
-    SQLGetDiagRec(type, handle, 1, sqlstate, &nativeError, message, sizeof(message)-1, &textLen);
+    if (handle != SQL_NULL_HANDLE)
+    {
+        SQLGetDiagRec(type, handle, 1, sqlstate, &nativeError, message, sizeof(message)-1, &textLen);
+    }
+    else if (msg != NULL && strlen(msg) > 0) {
+        textLen = strlen(msg);
+        strcpy(message,msg);
+        if (diagID != NULL) {
+            memcpy(sqlstate, diagID, std::min<int>(strlen(diagID),7));
+        }
+    }
     message[textLen] = 0x00;
+    logSQLMsg("Error: %5s, %s",sqlstate, message);
+
     std::string sqlstateStr = cvtToASCII(reinterpret_cast<const char*>(sqlstate));
     std::string msgtextStr = cvtToASCII(reinterpret_cast<const char*>(message));
     bool  rootWasOpen = closeJsonNode(output);
-    logSQLMsg("Error: %5s, %s",sqlstate, message);
+
     if (!rootWasOpen) {
         output << json->LCURLY; // open root object if not already open
         g_rootOpen = true;
     }
-
+    char buf[16];
+    sprintf(buf,"%d", errPos);
+    std::string errPosStr = cvtToASCII(reinterpret_cast<const char*>(buf));
     output << json->LF
          << json->ERROR << json->COLON << json->LCURLY
          << json->SQLSTATE << json->COLON
              << json->QUOTE << jsonEscape(sqlstateStr) << json->QUOTE << json->COMMA
+         << json->POSITION << json->COLON << errPosStr << json->COMMA
          << json->MSGTEXT << json->COLON
              << json->QUOTE << jsonEscape(msgtextStr) << json->QUOTE
          << json->RCURLY;
@@ -489,9 +540,9 @@ std::string base64Encode(const unsigned char *data, size_t len)
 }
 
 // Convert a string to ASCII using the provided CXLate object
-std::string cvtToASCII(const std::string& src) {
-    // if TO_ASCII is set off, simple return the EBCDIC JSON text to caller.
-    if (src.empty() || TO_ASCII == '0') return src;
+std::string cvtToASCII(const std::string& src, const int bForceConvert) {
+    // if TO_ASCII is set '0' simple return the EBCDIC JSON text to caller.
+    if (src.empty() || (TO_ASCII == '0' && !bForceConvert)) return src;
     std::string out;
     out.resize(src.size() * 4); // plenty of space for multibyte
     int len = toASCII.convert(src.c_str(), src.size(), &out[0], out.size());
@@ -504,7 +555,6 @@ std::string cvtToASCII(const std::string& src) {
 
 // Convert a string to ASCII using the provided CXLate object
 std::string cvtToEBCDIC(const std::string& src) {
-    // if TO_ASCII is set off, simple return the EBCDIC JSON text to caller.
     if (src.empty()) return src;
     std::string out;
     out.resize(src.size() * 4); // plenty of space for multibyte
@@ -1002,8 +1052,16 @@ int main(int argc, char *argv[])
         logSQLMsg("  Query parm 1: %s", sqlStmt.c_str());
         logSQLMsg("  Outfile parm 2: %s",pIFSFile);
         logSQLMsg("  Add/Replace IFS outfile parm 3: %s",szIFSOption.c_str());
-
+          // in command line mode, we default to Job & UTF08
+        hostCCSID = 0;
+        clientCCSID = 1208;
+        toASCII.openIBM( hostCCSID , clientCCSID);
+        toEBCDIC.openIBM( clientCCSID , hostCCSID );
+                // WHen writing to the IFS we don't need to do conversion
+                // because the output file converts everything for us.
+        bXLate = false;
         TO_ASCII = '0';
+
         json = &json_job;  // Use job CCSID for JSON synmbols instead of ASCII
     }
     else {
@@ -1022,10 +1080,6 @@ int main(int argc, char *argv[])
         {
             bXLate = false;  // Same CCSID, then no xlate needed.
         }
-
-            // TODO: Need more testing on other CGI_MODE environments
-            // to determine if conversion to ASCII for JSON is required
-            // if not, then set TO_ASCII to '0' and assign json_job to the json pointer
 
         if (pEnv != NULL)
         {
@@ -1115,6 +1169,12 @@ int main(int argc, char *argv[])
     static int bFractionalResulSet = 0;  // Set off until implemented
     static int bFirstCall = 1;
 
+  // Removes a lot of the noise in the joblog
+    pMuteSpurious = (char*) getenv("QIBM_CLI_MUTE_SPURIOUS_JOB_MSG");
+    if (pMuteSpurious==NULL || strlen(pMuteSpurious)==0)
+    {
+        putenv("QIBM_CLI_MUTE_SPURIOUS_JOB_MSG=Y");
+    }
 
     rc = SQLAllocHandle(SQL_HANDLE_ENV, SQL_NULL_HANDLE, &hEnv);      // Req.SeqLink-+
 
@@ -1123,7 +1183,7 @@ int main(int argc, char *argv[])
         logSQLMsg("%d = SQLAllocHandle(SQL_HANDLE_ENV... with %d - %s) failed.",
                         rc, errno, strerror(errno));
         returnFailure(output, "Could not allocate SQL hEnv handle. Request cancelled.");
-        return 0;
+        return exitDb2Json(0);
     }
 
   // SQL_ATTR_INVOKING_PGM is mostly used for *SRVPGM implementations
@@ -1143,11 +1203,15 @@ int main(int argc, char *argv[])
         sprintf(szError,"%d = SQLSetEnvAttr(%d,SQL_ATTR_INVOKING_PGM) Failed with errno(%d) - %s", rc,(int)hEnv , errno, strerror(errno));
         logSQLMsg(szError);
         returnFailure(output, szError);
-        return 0;
+        return exitDb2Json(0);
       }
     }
-
-
+    std::string errMsg;
+    int         errPos = 0;
+    if ((errPos = SQLSyntaxCheck(sqlStmt, errMsg)) > 0)
+    {
+         return checkError(output, -1, SQL_NULL_HANDLE, SQL_NULL_HANDLE, errMsg.c_str(), "SYNTAX", errPos);
+    }
     attr = SQL_FALSE;  // Don't return Null-Terminated Strings from SQL APIs
     rc = SQLSetEnvAttr((SQLHENV)hEnv,SQL_ATTR_OUTPUT_NTS,(SQLPOINTER)&attr,0);
 
@@ -1164,6 +1228,37 @@ int main(int argc, char *argv[])
     attr = SQL_TRUE;   // Allow extended attributes via SQLColAttribute
     rc = SQLSetConnectAttr(hDbc,SQL_ATTR_EXTENDED_COL_INFO, (SQLPOINTER)&attr,0);
     ifCheckError(output,  rc, hDbc, SQL_HANDLE_DBC, "SetConnAttr");
+
+#ifndef TOASCII
+    attr = SQL_TRUE;   // Return UTF-8 data
+    rc = SQLSetConnectAttr(hDbc, SQL_ATTR_UTF8, (SQLPOINTER)&attr,0);
+    ifCheckError(output,  rc, hDbc, SQL_HANDLE_DBC, "SetConnAttr");
+#endif
+
+
+        // The SQL "CLIENT CURRENT_USER" special register must be set by this client app
+        // otherwise it returns an empty string.
+        // I use the "effecitve" User Profile which is when the job/app switches USER Profiles.
+        // then this is the one underwhich the job is currently running.
+        // If you prefer the real (original) user profile, then simpley switch the
+        // pointer on the SQLSetConnectAttr statement (below) to pUser from pEffectiveuser
+
+    struct passwd* pEffectiveUser = NULL;
+    struct passwd* pUser          = NULL;
+    pEffectiveUser = getpwuid( geteuid() );
+    pUser          = getpwuid( getuid() );
+    if (pEffectiveUser != NULL)
+    {
+        rc = SQLSetConnectAttr(hDbc,SQL_ATTR_INFO_USERID,
+                (SQLPOINTER) pEffectiveUser->pw_name,
+                 strlen(pEffectiveUser->pw_name));
+    }
+
+    const char* pAppName = "DB2JSON";
+    rc = SQLSetConnectAttr(hDbc, SQL_ATTR_INFO_APPLNAME,
+                (SQLPOINTER) pAppName,
+                 strlen(pAppName));
+
 
     // Connect to the database (null means use default)
     rc = SQLConnect(hDbc, NULL, 0, NULL, 0, NULL, 0);
@@ -1277,16 +1372,83 @@ int main(int argc, char *argv[])
         for (size_t i = 0; i < columns.size(); ++i)
         {
             if (i > 0)
+            {  // if not the first column then add a comma, suffix.
                 output << json->COMMA;
+            }
             const Column &col = columns[i];
             output << json->QUOTE << jsonEscape(cvtToASCII(col.name)) << json->QUOTE << json->COLON;
             memset(buf, 0x00, sizeof(buf));
             SQLINTEGER indicator = 0;
+            SQLINTEGER rtnDataLen = 0;
+            size_t total = 0;
             switch (col.type)
             {
-            case SQL_CHAR:
-            case SQL_VARCHAR:
+            // ...inside your row/column loop...
             case SQL_CLOB:
+            case SQL_VARCHAR:
+            case SQL_CHAR:
+            {
+                std::string val;
+                SQLINTEGER ind = 0;
+
+                // 1) Length-only probe (no data returned)
+                rc = SQLGetData(hStmt, (SQLUSMALLINT)(i + 1),
+                                SQL_C_CHAR, /* or SQL_C_BINARY for XML/DBCLOB */
+                                NULL, 0, &ind);
+
+                if (ind == SQL_NULL_DATA) {
+                    output << json->NULL_VAL;
+                    break;
+                }
+
+                if (rc == SQL_SUCCESS && ind != SQL_NO_TOTAL && ind > 0) {
+                    // 2) Allocate exact size (+1 for NUL) and fetch once
+                    std::string buf;
+                    buf.resize((size_t)ind + 1);
+                    SQLINTEGER ind2 = 0;
+                    rc = SQLGetData(hStmt, (SQLUSMALLINT)(i + 1),
+                                    SQL_C_CHAR,
+                                    &buf[0], (SQLINTEGER)buf.size(), &ind2);
+                    if (rc == SQL_SUCCESS || rc == SQL_SUCCESS_WITH_INFO) {
+                        buf.resize((ind2 > 0 && ind2 < (SQLINTEGER)buf.size()) ? (size_t)ind2 : buf.size());
+                        if (col.type == SQL_CHAR) local_trimRight(buf);
+                        output << json->QUOTE << jsonEscape(cvtToASCII(buf, false)) << json->QUOTE;
+                    } else {
+                        // Fallback: emit NULL or handle error
+                        output << json->NULL_VAL;
+                    }
+                } else {
+                    // Unknown length -> chunked fallback (your existing loop)
+                    std::string acc;
+                    SQLINTEGER ind3 = 0;
+                    char tmp[4096];
+                    size_t total = 0;
+                    for (;;) {
+                        memset(tmp, 0, sizeof(tmp));
+                        rc = SQLGetData(hStmt, (SQLUSMALLINT)(i + 1),
+                                        SQL_C_CHAR, tmp, sizeof(tmp), &ind3);
+                        if (ind3 == SQL_NULL_DATA) { acc.clear(); break; }
+                        size_t add = 0;
+                        if (rc == SQL_SUCCESS_WITH_INFO) add = sizeof(tmp) - 1;
+                        else if (rc == SQL_SUCCESS) {
+                            if (ind3 == SQL_NO_TOTAL) add = local_strnlen(tmp, sizeof(tmp));
+                            else {
+                                size_t remaining = (ind3 > (SQLINTEGER)total) ? (size_t)ind3 - total : 0;
+                                add = std::min(remaining, sizeof(tmp) - 1);
+                            }
+                        } else break;
+                        if (add) { acc.append(tmp, add); total += add; }
+                        if (rc == SQL_SUCCESS) break;
+                    }
+                    if (ind3 == SQL_NULL_DATA) output << json->NULL_VAL;
+                    else {
+                        if (col.type == SQL_CHAR) local_trimRight(acc);
+                        output << json->QUOTE << jsonEscape(cvtToASCII(acc, false)) << json->QUOTE;
+                    }
+                }
+                break;
+            }
+            case 3471:  // original routine before recent modifications (saved, just in case)
             {
                 std::string val;
                 val.clear();
@@ -1294,12 +1456,14 @@ int main(int argc, char *argv[])
                     rc = SQLGetData(hStmt, (SQLUSMALLINT)(i + 1), SQL_C_CHAR, buf, sizeof(buf), &indicator);
                     if (indicator == SQL_NULL_DATA) {
                         val.clear();
+                        val = "<null>";
                         break;
                     }
-                    if ((rc == SQL_SUCCESS || rc == SQL_SUCCESS_WITH_INFO) && indicator > 0) {
-                        size_t chunkLen = (indicator < (SQLINTEGER)sizeof(buf)) ? indicator : sizeof(buf) - 1;
+                    rtnDataLen = indicator;
+                    if ((rc == SQL_SUCCESS || rc == SQL_SUCCESS_WITH_INFO) && rtnDataLen > 0) {
+                        size_t chunkLen = (rtnDataLen < (SQLINTEGER)sizeof(buf)) ? rtnDataLen : sizeof(buf) - 1;
                         // Trim trailing spaces if we got the whole value in one chunk (not for CLOB)
-                        if (col.type != SQL_CLOB && indicator < (SQLINTEGER)sizeof(buf)) {
+                        if (col.type != SQL_CLOB && rtnDataLen < (SQLINTEGER)sizeof(buf)) {
                             while (chunkLen > 0 && buf[chunkLen - 1] == ' ')
                                 --chunkLen;
                         }
@@ -1409,7 +1573,7 @@ int main(int argc, char *argv[])
     if (hEnv)
         SQLFreeHandle(SQL_HANDLE_ENV, hEnv);
 
-    return 0;
+    return exitDb2Json(0);
 }
 
 
@@ -1485,25 +1649,100 @@ const char* sqlTypeToJSONText(int sqlType) {
     }
 }
 
-int SQLSyntaxCheck( const char* sqlStmt )
+int SQLSyntaxCheck( std::string& sqlStmt, std::string& rtnMsg )
 {
+Qus_EC_t ec;
+int  recProc = 0;
+int  restrictedVerb = 0;
+char langID[10];
+char msgid[8];
+char msgfile[11];
+char msgflib[11];
+char msgf[21];
+char subValues[11];
+char fmtCtrl[11];
+char buffer[4096];
+char* msgInfo = buffer;
 
-qsq_SQLCheckOptions_t* pSQLCheckOptions = NULL;
-char SQLCheckBuffer[64];
-memset(SQLCheckBuffer,0x00, sizeof(SQLCheckBuffer));
-qsq_SQLCheckOptions_t* pSQLCheckOptions;
-        // returned structures
-Qsq_Statement_Info_t*  pSQLCheckInfo;
-Qsq_Statement_I_t*     pSQLCheckErrorMsg;
-int stmtsChecked = 0;
-int stmtsToCheck = 1;
-QSQCHKS( szSQLStmt.c_str(),
-            szSQLStmt.length(),  // Length of SQL Statement(s) (parm 1)
-            stmtsToCheck,     // Number of statements to check
-            "*NONE     ",     // HLL Language context *NONE=SQL
-            pSQLCheckOptions, // SQL syntax options (leave 0)
-            pSQLCheckInfo,    // Returned error messages
-            sizeof(checkinf), // Length of return buffer for messages
-            &stmtsChecked,    // Returned checked-statements count
-            &ec);
+
+typedef _Packed struct tag_Statement_Info
+   {
+      char Message_File_Name[10];
+      char Message_File_Library_Name[10];
+      int  Number_of_Statements_Processed;
+      Qsq_Statement_I_t Statement;
+      char msgdata[1920];
+   } sqlStmtInfo_t;
+
+typedef _Packed struct tagsqlOptions {
+       int           key;
+       int           length;
+       char          data[10];
+    } sqlOption_t;
+
+ struct {
+    int           keys;
+    sqlOption_t   naming;
+    sqlOption_t   decfmt;
+ } keyInfo;
+
+ sqlStmtInfo_t  stmtInfo;
+
+ struct {
+    int    pos;
+    char   stmt[33];
+ } errStmt;
+
+ memcpy(langID,"*NONE     ",10);
+
+ memset((char*)&stmtInfo,0x00,sizeof(stmtInfo));
+ memset((char*)&keyInfo,0x00,sizeof(keyInfo));
+ memset((char*)&ec,0x00, sizeof(ec) );
+ ec.Bytes_Provided = sizeof(Qus_EC_t);
+
+ QSQCHKS((void*) sqlStmt.c_str(), sqlStmt.length(), 1, langID, &keyInfo,
+          &stmtInfo, sizeof(stmtInfo), recProc, &ec);
+
+ if (stmtInfo.Statement.Record_Statement_Error > 0)   // Syntax error?
+ {
+ memcpy(msgid,   stmtInfo.Statement.Message_Id, sizeof(stmtInfo.Statement.Message_Id));
+ memcpy(msgfile, stmtInfo.Message_File_Name, sizeof(stmtInfo.Message_File_Name));
+ memcpy(msgflib, stmtInfo.Message_File_Library_Name,sizeof(stmtInfo.Message_File_Library_Name));
+ memset(msgf, ' ', sizeof(msgf));
+ memcpy(msgf, msgfile, sizeof(msgfile));
+ memcpy(msgf+10, msgflib, sizeof(msgflib));
+ memcpy(subValues, "*YES      ",10);
+ memcpy(fmtCtrl,   "*NO       ",10);
+
+    QMHRTVM( msgInfo, sizeof(buffer),
+         "RTVM0100",
+         (char*) msgid,
+         (char*) msgf,
+         (char*) stmtInfo.msgdata,
+         stmtInfo.Statement.Length_Message_Data,
+         subValues,
+         fmtCtrl,
+         &ec);
+    Qmh_Rtvm_RTVM0100* pRtnMsg = NULL;
+    if (ec.Bytes_Available == 0) {
+      int level = 1;  // Return 1st level message text
+      pRtnMsg = (Qmh_Rtvm_RTVM0100*)msgInfo;
+      if (pRtnMsg->Bytes_Return > 8) {
+        if (level == 1)
+        rtnMsg.assign(msgInfo + sizeof(Qmh_Rtvm_RTVM0100_t), pRtnMsg->Length_Message_Returned);
+        else if (level = 2)
+        rtnMsg.assign(msgInfo + sizeof(Qmh_Rtvm_RTVM0100_t) + pRtnMsg->Length_Message_Returned,
+                            pRtnMsg->Length_Help_Returned);
+      }
+    }
+
+    const int colErr = stmtInfo.Statement.Column_Statement_Error;
+    std::string prefix = intToText(colErr);
+    prefix += ", ";
+    rtnMsg.insert(0, prefix);
+
+    return stmtInfo.Statement.Column_Statement_Error;
+
+ }
+ return 0;
 }
