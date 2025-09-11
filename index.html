@@ -14,7 +14,7 @@
 
 <body>
     <h1>DB2JSON Query</h1>
-    <form id="sqlForm" method="post" enctype="multipart/form-data">
+    <form id="sqlForm" method="post" enctype="multipart/form-data" autocomplete="off" spellcheck="true">
         <div class="sql-label-row">
             <label for="sqlInput">Type SQL or select from history:</label>
             <button type="submit" class="run-sql-btn" title="Run the current SQL statement at the cursor">Run
@@ -33,7 +33,12 @@
 
             <div class="sql-textarea-row">
                 <div class="textarea-btn-container">
-                    <textarea id="sqlInput" name="q" rows="6" cols="80"></textarea>
+                    <textarea id="sqlInput" name="q" rows="6" cols="80"
+                            autocomplete="off"
+                            autocorrect="off"
+                            spellcheck="false"
+                            data-gramm="false"
+                            data-enable-grammarly="false"></textarea>
 
                     <div class="textarea-toolbar" role="toolbar" aria-label="SQL editor tools">
                         <!-- Open -->

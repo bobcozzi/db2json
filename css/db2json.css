@@ -3,6 +3,8 @@
     --pad: 12px;
     --gap: 10px;
     --font: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    /* Space to leave for header/controls above results; tweak as needed */
+    --results-offset: 12rem;
 }
 
 body {
@@ -388,6 +390,11 @@ td {
   box-sizing: border-box;
   resize: both;
   overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  tab-size: 4;                  /* tabs render predictably */
+  -webkit-text-size-adjust: 100%; /* prevent iOS Safari zoom/resize weirdness */
+  font-variant-ligatures: none; /* avoid “smart” ligatures in some fonts */
+  caret-color: #0b5ad9;        /* visible caret */
 }
 
 /* Textarea row: not flex; let textarea control size */
@@ -576,4 +583,43 @@ td {
   color: #0e2f0e;
   outline: 2px solid rgba(21, 71, 21, 0.3);
   border-radius: 4px;
+}
+
+/* Results panel: simple block container (no flex, no custom resizer) */
+.results-area #results {
+  box-sizing: border-box;
+  margin-top: 6px;
+  border: 0;                  /* was 1px solid #ddd */
+  border-radius: 0;           /* moved to wrapper */
+  background: transparent;    /* moved to wrapper */
+  overflow: visible;          /* inner wrapper scrolls */
+}
+
+/* Make the scroll viewport itself resizable and frame the table width */
+.results-area #results .scroll-table-wrapper {
+  display: inline-block;
+  width: max-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  height: 40vh;
+  min-height: 160px;
+  /* Let it grow close to the bottom of the viewport, minus UI above */
+  max-height: calc(100dvh - var(--results-offset));
+  overflow: auto;
+  resize: vertical;
+  -webkit-overflow-scrolling: touch;
+
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+}
+
+/* Hide the frame until results are actually rendered */
+.results-area #results .scroll-table-wrapper:empty {
+  display: none;
+}
+
+/* Remove prior global cap so growth isn’t limited */
+#results .scroll-table-wrapper {
+  max-height: none; /* allow rule above to control it */
 }

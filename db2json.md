@@ -1,8 +1,13 @@
-# db2json User Guide
+# db2json Query User Guide
 
 ## Overview
 
-The **db2json** HTML page provides a simple interface for entering, editing, and running SQL statements against IBM i databases. It features syntax checking, error highlighting, statement history, and a toolbar for file and clipboard operations. The results of SELECT, CTE, or VALUES (commonly referred to as "query statements") are display in a scrolling table. That resultSet table has a copy button that copies the entire contents to the Clipboard. You can consider this demonstration app as a `lightweight RUN SQL`.
+The **db2json Query** HTML page provides a simple interface for entering, editing, and running SQL statements against IBM i databases. It features syntax checking, error highlighting, statement history, and a toolbar for file and clipboard operations. The results of SELECT, CTE, or VALUES (commonly referred to as “query statements”) are displayed in a scrolling table. That result set table has a copy button that copies the entire contents to the clipboard. This is a demonstration of how to use the DB2JSON C++ program that runs on your IBM i server to convert SQL query statements into JSON. While it is just an example, it is a very robust application. In fact, you might consider it to be a lightweight alternative to the `RUN SQL Scripts` tool found in IBM i Access Client Solutions (ACS).
+
+### Requirements
+- An IBM i server running V7R2 or later. The server-side code (DB2JSON.CPP) will compile on earlier releases, but it was not tested.
+- The IBM HTTP Server Powered by Apache with the configurations outlined in our [README file](https://github.com/bobcozzi/db2json#readme)
+- A compiled version of the DB2JSON.CPP program object (*PGM) on your IBM i server. This is both the JSON generator and the CGI processor.
 
 ## Features
 
@@ -22,41 +27,51 @@ The **db2json** HTML page provides a simple interface for entering, editing, and
 
 ### Statement History
 
+Your SQL statement history is stored locally in your browser and can be used to retrieve SQL statements that were previously run. We set an arbitrary limit of 512 SQL statements. You can change that in the code if you prefer. To access the history, use the history dropdown and select from your previously run statements. You can also edit entries and clear them at any time.
+
 - The history dropdown lets you quickly recall previous SQL statements.
 - Use the **Edit History** button to manage or clean up your saved statements.
-- **Clear History** removes all saved SQL statements from your browser.
+- Use the **Clear History** button to remove all saved SQL statements from your browser (a confirmation dialog prompts you to confirm).
 
-### Toolbar Buttons
+### Open/Save SQL Statements from Local File
 
-- **Open**: Load a SQL file from your computer.
-  - On Chrome/Edge over HTTPS or localhost, you can re-save to the same file.
-  - On other browsers, or if not secure, use "Save As" to export.
-- **Save**: Save changes back to the opened file.
-  - Only available on Chrome/Edge over HTTPS or localhost, and after opening a file via the picker.
-- **Save As**: Export the current SQL to a new file.
-  - Always available; prompts for a filename.
-  - In some cases this saves the SQL source to a file in the browser's downloads folder.
-- **Copy**: Copy the current SQL to your clipboard.
-  - Shows a checkmark when successful.
+The toolbar near the top‑right of the SQL statement input provides Open, Save, Save As, and Copy functionality.
 
-#### Limitations
+- Open
+  - Chrome / Microsoft Edge over HTTPS or http://localhost: uses the file picker and retains a file handle so you can Save back to the same file.
+  - Other browsers or non‑secure contexts: uses a fallback file chooser (no persistent handle). You can open files, but Save will be disabled; use Save As.
 
-- **Save** is disabled unless you open a file using the browser's file picker in a secure context (HTTPS or localhost).
-- On Firefox, Safari, or insecure contexts, use **Save As** instead.
+- Save
+  - Enabled only after you opened a file via the picker in Chrome/Edge over HTTPS or http://localhost (i.e., when a file handle is available).
+  - Writes changes back to the same file without prompting.
+
+- Save As
+  - Chrome / Microsoft Edge over HTTPS or http://localhost: shows the native Save dialog (you choose folder and filename).
+  - Other browsers or non‑secure contexts: triggers a download. Depending on browser settings, you may be prompted for the filename and location, or it will save to your Downloads folder.
+
+- Copy
+  - Copies the SQL statement input area to the clipboard and shows a brief checkmark confirmation.
+
+### Copy Results Table
+
+- A Copy button appears in the results area when a query returns rows.
+- Clicking it copies the entire contents of the results table to your clipboard (suitable for pasting into a spreadsheet or editor).
+- A brief checkmark confirmation appears on success; if copying is blocked, a toast notification explains the issue and suggests retrying.
+- Very large results may take a moment to copy depending on your browser and device.
+
+### Limitations
+
+- Save is disabled unless you open a file using the browser’s file picker in a secure context (HTTPS or http://localhost in Chrome/Edge).
+- On Firefox, Safari, or insecure contexts, use Save As instead.
 - A notification will appear if Save is unavailable, explaining why.
 
----
-
-## Error Handling
-
+### Error Handling
 - Syntax errors are highlighted directly in the SQL input.
 - Non-syntax errors display SQLSTATE and a descriptive message.
-- The input caret moves to the error location for easy correction.
-
----
+- The input caret moves to the syntax error location for easy correction.
 
 ## Tips
 
-- For best results, use Chrome or Edge over HTTPS or http://localhost.
+- For best results, use Chrome or Edge over HTTPS or at http://localhost.
 - Use the history dropdown to quickly switch between recent statements.
-- If you see a toast notification about Save limitations, use "Save As" to export your SQL.
+- If you see a toast notification about Save limitations, use “Save As” to export your SQL.

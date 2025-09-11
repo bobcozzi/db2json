@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.8 - 11-SEPT-2025 -
+- The resultset table of the DB2 Query sample HTML page "app" now allows  resizing of the table by dragging its lower righthand corner.
+- On Apple devices, the SQL entry now avoids that Apple "autocorrect" issue that some users were experiencing.
+
 ## 0.0.7 - 10-SEPT-2025 -
 - Now when Db2JSON is run, it checks for and adds the `QIBM_CLI_MUTE_SPURIOUS_JOB_MSG=Y` environment variable. This reduces the noise produced by SQL CLI by asking it to filter excessive SQ99999 / HY010 messages from being sent to the joblog. The Job-level environment attribute `QIBM_CLI_MUTE_SPURIOUS_JOB_MSG` can be set to `Y` to enable this filtering. Db2JSON now automatically creates this environment variable and sets it to `Y` if the environment variable is not already defined. That is, it will create it, but will not change it.
 - Various bug fixed.

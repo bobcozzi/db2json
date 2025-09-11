@@ -23,25 +23,30 @@ For a description of the JSON that is produced look here: [JSON Structure Docume
 3. Copy db2json_sqlHist.js to to /www/apachedft/docs/js/db2json_sqlHist.js
 4. Copy db2json.css to to /www/apachedft/docs/css/db2json.css
 5. Copy db2json.html to to /www/apachedft/docs/db2json.html
-6. Add the following to your HTTPD.CONF file. If using the default instance, then that file is located at: `/www/apachedft/conf/httpd.conf` and may be edited by entering this Command:
-   `edtf /www/apachedft/conf/httpd.conf`
-If you are using another instance, then use it instead of `apachedft`.
-Here are the HTTMD.conf settings you need to make it work.
+6. Add the following to your HTTPD.CONF file. If using the default instance, then that file is located at: `/www/apachedft/conf/httpd.conf` and may be edited by entering this Command: `edtf /www/apachedft/conf/httpd.conf`
+If you are using another instance name, then use that name instead.
+Here are the HTTPD.conf settings you need to make it work.
 ### Minimum Config:
 ```
-# Redirect a: https://<mycooldomainName.com>/db2json to
-# the Db2JSON RUN SQL demo file named index.html in that folder.
+# When installing the DB2Query sample app, add a redirect to
+# the Db2JSON RUN SQL demo html page named index.html.
 # The redirect handles only https://<domain>/db2query (with no trailing data)
-# While the AliasMatch handles everything else.
+# The AliasMatch handles everything else, so both are required.
 RedirectMatch 301 ^/db2query$ /db2query/
 AliasMatch  ^/db2query/(.*)   /www/apachedft/docs/db2json/$1
 
-# To support the CGI requests, the CGI program Db2JSON must be added
-# as a Script (ScriptAlias)
+# To support the CGI requests, the  Db2JSON CGI program must be
+# added as a Script (ScriptAlias)
 ScriptAlias /db2json /qsys.lib/db2json.lib/db2json.pgm
 ```
 
-### Full Config: w/Basic Authentication (e.g., Prompt for User Profile signon)
+### Full Config: w/Basic Authentication (i.e., Prompt for User Profile signon)
+The following is the full HTTP configuration statements in context.
+Note:
+- The redirect/aliasmatch are followed by basic authentication for the folder.
+- The ScriptAlias is followed by basic authentication for the CGI program.
+- The configuration assumes you created the DB2JSON.CPP program in library DB2JSON and that the HTML/JS/CSS are all stored in the /db2json subdirectory off your Apache server instance's docs folder. Adjust as nessary.
+- The example lightweight RUN SQL app for the web shipped with DB2JSON is accessed by your users using the /db2query folder suffix on their http request.
 ```
 RedirectMatch 301 ^/db2query$  /db2query/
 AliasMatch  ^/db2query/(.*)    /www/apachedft/docs/db2json/$1
@@ -57,8 +62,9 @@ AliasMatch  ^/db2query/(.*)    /www/apachedft/docs/db2json/$1
 </Directory>
 
 # To support CGI requests, the CGI program Db2JSON needs to be
-# added as a Script (ScriptAlias) in this example, and if you want
-# it secured as well, then add basic authentication details.
+# added as a ScriptAlias (as mentioned above) in this example,
+# If you want to secured it via user authority, then add
+# basic authentication just below the StripAlias you created above.
 ScriptAlias /db2json /qsys.lib/db2json.lib/db2json.pgm
 <Location /db2json>
     AuthType Basic

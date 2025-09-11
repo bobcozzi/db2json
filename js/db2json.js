@@ -1151,7 +1151,6 @@ function initDb2jsonUI() {
     updateSaveButtonsState();
 }
 
-
 // History actions
 const clearBtn = document.getElementById('clearSqlHistoryBtn');
 const editBtn = document.getElementById('editSqlHistoryBtn');
@@ -1188,4 +1187,54 @@ const saveAsBtn = document.getElementById('saveSqlFileBtn');
 if (saveAsBtn) {
     saveAsBtn.textContent = 'Save SQL as...';
     saveAsBtn.addEventListener('click', saveSqlAsFile);
+}
+
+// Harden SQL textarea against unwanted features
+function hardenSqlTextarea() {
+  const ta = document.getElementById('sqlInput');
+  if (!ta) return;
+
+  // Always safe
+  try { ta.autocomplete = 'off'; } catch {}
+  try { ta.spellcheck = false; } catch { try { ta.setAttribute('spellcheck', 'false'); } catch {} }
+
+  // Only set if supported to avoid Safari warnings
+  try { if ('autocapitalize' in ta) ta.autocapitalize = 'off'; } catch {}
+  try {
+    if ('autocorrect' in ta) {
+      ta.autocorrect = 'off';
+    } else {
+      // Some iOS builds accept the attribute even without a property
+      ta.setAttribute('autocorrect', 'off');
+    }
+  } catch {}
+
+  // inputMode property (fallback to attribute)
+  try {
+    if ('inputMode' in ta) ta.inputMode = 'text';
+    else ta.setAttribute('inputmode', 'text');
+  } catch {}
+
+  // Disable grammar/extension helpers if present
+  try { ta.setAttribute('data-gramm', 'false'); } catch {}
+  try { ta.setAttribute('data-enable-grammarly', 'false'); } catch {}
+
+  // Prevent translation (e.g., by browser or extensions)
+  try { ta.setAttribute('translate', 'no'); } catch {}
+}
+
+// Ensure it runs after your existing init
+(function patchInitForHarden() {
+  const orig = window.initDb2jsonUI;
+  window.initDb2jsonUI = function patchedInit() {
+    if (typeof orig === 'function') orig();
+    hardenSqlTextarea();
+  };
+})();
+
+// If initDb2jsonUI already ran, still harden now
+if (document.readyState !== 'loading') {
+  try { hardenSqlTextarea(); } catch {}
+} else {
+  document.addEventListener('DOMContentLoaded', () => { try { hardenSqlTextarea(); } catch {} });
 }
