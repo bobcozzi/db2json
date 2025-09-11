@@ -8,7 +8,7 @@
     "esModuleInterop": true,     // Helps with importing some modules, safe to keep
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["*.ts"],
+  "include": ["**/*.ts"],
   "exclude": ["node_modules", "js", "css", "H", "QCLSRC", "QCSRC"]
 }
 

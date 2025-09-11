@@ -51,10 +51,12 @@ if (typeof window.maybeShowSaveUnsupportedNotice !== 'function') {
     try {
       const key = reason === 'fallback' ? 'db2json_save_notice_fallback' : 'db2json_save_notice_ctx';
       if (sessionStorage.getItem(key) === '1') return;
-      const msg = reason === 'fallback'
-        ? '“Save SQL Statements to local File” is unavailable in this browser without HTTP prototocl. Use “Save SQL As...”, or open over HTTPS or in Chrome/Edge from http://localhost to enable.'
-        : 'Save SQL Statements to local file is unavailable for http (requires HTTPS). “Save As...” may work, but will save to your downloads folder, or use HTTPS or http://localhost works in Chrome/Edge.';
-      showToast(msg, 'warn', 10000);
+
+      const msg = (reason === 'fallback')
+        ? '"Save SQL Statements to local file" will be unavailable in the browser session. Use "Save As...", or use HTTPS or use Chrome/MS Edge from http://localhost to enable.'
+        : '"Save SQL Statements to local file" is unavailable in this browser/context (requires HTTPS, or http://localhost in Chrome/MS Edge). "Save As..." will save to downloads folder.';
+
+      showToast(msg, 'warn', 12000);
       sessionStorage.setItem(key, '1');
     } catch {}
   }
