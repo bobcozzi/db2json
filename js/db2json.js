@@ -143,90 +143,98 @@ function updateCopySqlEnabled() {
 }
 
 function initDb2jsonUI() {
-    if (window._db2jsonInited) return;
-    window._db2jsonInited = true;
+  if (window._db2jsonInited) return;
+  window._db2jsonInited = true;
 
-    const copyTableBtn = document.getElementById('copyTableBtn');
-    const sqlForm = document.getElementById('sqlForm');
-    const copySqlInputBtn = document.getElementById('copySqlInputBtn');
-    const textarea = document.getElementById('sqlInput');
-    const submitModeSel = document.getElementById('submitMode');
+  const sqlForm = document.getElementById('sqlForm');
+  const textarea = document.getElementById('sqlInput');
+  const copySqlInputBtn = document.getElementById('copySqlInputBtn');
+  const copyTableBtn = document.getElementById('copyTableBtn');
+  const submitModeSel = document.getElementById('submitMode');
 
-    if (copyTableBtn) copyTableBtn.classList.add('is-hidden');
-    if (sqlForm) sqlForm.addEventListener('submit', handleSqlSubmit);
-    if (copySqlInputBtn) copySqlInputBtn.addEventListener('click', copySqlInput);
+  // History UI
+  const dropdown = document.getElementById('sqlHistoryDropdown');
+  const clearBtn = document.getElementById('clearSqlHistoryBtn');
+  const editBtn = document.getElementById('editSqlHistoryBtn');
+  const modal = document.getElementById('historyModal');
+  const saveHistBtn = document.getElementById('historySaveBtn');
+  const cancelBtn = document.getElementById('historyCancelBtn');
 
-    if (submitModeSel) {
-        submitModeSel.addEventListener('change', () => {
-            const form = document.getElementById('sqlForm');
-            if (!form) return;
-            const mode = submitModeSel.value || 'GET';
-            if (mode === 'GET') {
-                form.method = 'get';
-                form.enctype = 'application/x-www-form-urlencoded';
-            } else if (mode === 'POST_URLENC') {
-                form.method = 'post';
-                form.enctype = 'application/x-www-form-urlencoded';
-            } else {
-                form.method = 'post';
-                form.enctype = 'multipart/form-data';
-            }
-        });
-        submitModeSel.dispatchEvent(new Event('change'));
-    }
+  // File toolbar
+  const openBtn = document.getElementById('openSqlFileBtn');
+  const saveBtn = document.getElementById('saveSqlBtn');
+  const saveAsBtn = document.getElementById('saveSqlFileBtn');
 
-    // History dropdown + actions (keep existing buttons)
-    populateSqlHistoryDropdown();
-    const dropdown = document.getElementById('sqlHistoryDropdown');
-    if (dropdown) {
-        dropdown.addEventListener('change', () => {
-            if (dropdown.value) document.getElementById('sqlInput').value = dropdown.value;
-            updateCopySqlEnabled();
-        });
-    }
-    const clearBtn = document.getElementById('clearSqlHistoryBtn');
-    const editBtn = document.getElementById('editSqlHistoryBtn');
-    if (clearBtn) clearBtn.addEventListener('click', clearSqlHistory);
-    if (editBtn) editBtn.addEventListener('click', openEditHistoryModal);
-    const modal = document.getElementById('historyModal');
-    const saveHistBtn = document.getElementById('historySaveBtn');
-    const cancelBtn = document.getElementById('historyCancelBtn');
-    if (saveHistBtn) saveHistBtn.addEventListener('click', saveEditedHistory);
-    if (cancelBtn) cancelBtn.addEventListener('click', closeEditHistoryModal);
-    if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) closeEditHistoryModal(); });
+  // Initial state
+  if (copyTableBtn) copyTableBtn.classList.add('is-hidden');
 
-    // Copy button enable/disable
-    if (textarea) {
-        textarea.addEventListener('input', updateCopySqlEnabled);
-        updateCopySqlEnabled();
-    }
+  // Form submit
+  if (sqlForm) sqlForm.addEventListener('submit', handleSqlSubmit);
 
-    // Layout sync for toolbar positioning
-    attachSqlInputResizeSync();
+  // Copy SQL input
+  if (copySqlInputBtn) copySqlInputBtn.addEventListener('click', copySqlInput);
 
-    // Toolbar: Open/Save/Save As
-    const openBtn = document.getElementById('openSqlFileBtn');
-    if (openBtn) openBtn.addEventListener('click', openSqlFile);
+  // Submit mode
+  if (submitModeSel) {
+    submitModeSel.addEventListener('change', () => {
+      const form = document.getElementById('sqlForm');
+      if (!form) return;
+      const mode = submitModeSel.value || 'GET';
+      if (mode === 'GET') {
+        form.method = 'get';
+        form.enctype = 'application/x-www-form-urlencoded';
+      } else if (mode === 'POST_URLENC') {
+        form.method = 'post';
+        form.enctype = 'application/x-www-form-urlencoded';
+      } else {
+        form.method = 'post';
+        form.enctype = 'multipart/form-data';
+      }
+    });
+    submitModeSel.dispatchEvent(new Event('change'));
+  }
 
-    const saveBtn = document.getElementById('saveSqlBtn');
-    if (saveBtn) {
-        saveBtn.addEventListener('click', async () => {
-            const ok = await saveSqlToCurrentFile();
-            if (!ok) await saveSqlAsFile();
-        });
-    }
+  // History dropdown + actions
+  populateSqlHistoryDropdown();
+  if (dropdown) {
+    dropdown.addEventListener('change', () => {
+      if (dropdown.value) document.getElementById('sqlInput').value = dropdown.value;
+      updateCopySqlEnabled();
+    });
+  }
+  if (clearBtn) clearBtn.addEventListener('click', clearSqlHistory);
+  if (editBtn) editBtn.addEventListener('click', openEditHistoryModal);
+  if (saveHistBtn) saveHistBtn.addEventListener('click', saveEditedHistory);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeEditHistoryModal);
+  if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) closeEditHistoryModal(); });
 
-    const saveAsBtn = document.getElementById('saveSqlFileBtn');
-    if (saveAsBtn) saveAsBtn.addEventListener('click', saveSqlAsFile);
+  // Textarea state and layout
+  if (textarea) {
+    textarea.addEventListener('input', updateCopySqlEnabled);
+    updateCopySqlEnabled();
+  }
+  attachSqlInputResizeSync();
+  hardenSqlTextarea();
 
-    updateSaveButtonsState();
+  // File Open/Save/Save As (icons handled by CSS; do not set textContent here)
+  if (openBtn) openBtn.addEventListener('click', openSqlFile);
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      const ok = await saveSqlToCurrentFile();
+      if (!ok) await saveSqlAsFile();
+    });
+  }
+  if (saveAsBtn) saveAsBtn.addEventListener('click', saveSqlAsFile);
+
+  // Enable/disable Save appropriately; also triggers the context toast via the hook
+  updateSaveButtonsState();
 }
 
 // Initialize once DOM is ready
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initDb2jsonUI);
+  document.addEventListener('DOMContentLoaded', initDb2jsonUI);
 } else {
-    initDb2jsonUI();
+  initDb2jsonUI();
 }
 
 function buildColTitle(col) {
@@ -489,18 +497,20 @@ function renderTable(json, resultsDiv) {
     }
     html += '</tbody>';
 
-    html += `<tfoot><tr><td colspan="${columns.length}" class="table-footer-info"><b>Rows: ${rows.length} &nbsp; &nbsp; Columns: ${columns.length}`;
-    if (tblname) html += ` &nbsp; &nbsp; Table: ${tblname}`;
-    if (libname) html += ` &nbsp; &nbsp; Library: ${libname}`;
-    html += '</b></td></tr></tfoot>';
-    html += '</table></div>';
+    html += '</table></div>'; // close .scroll-table-wrapper
 
+    // Now inject the table
     resultsDiv.innerHTML = html;
+    try {
+      setResultsMeta({ rowsCount: rows.length, colsCount: columns.length, tblname, libname });
+      document.getElementById('copyTableBtn')?.classList.remove('is-hidden');
+    } catch {}
+
     // Debug: Log the generated HTML to check for <tfoot>
     console.log('Generated table HTML:', html);
-    // Wait for DOM update before measuring and setting max-height
+    // Wait for DOM update before measuring and setting col widths
     window.requestAnimationFrame(() => {
-        adjustTableMaxHeight(resultsDiv);
+        // adjustTableMaxHeight(resultsDiv);   // REMOVE: CSS controls max-height now
         syncColWidths(resultsDiv);
     });
 
@@ -508,8 +518,8 @@ function renderTable(json, resultsDiv) {
     if (window._db2jsonResizeHandler) {
         window.removeEventListener('resize', window._db2jsonResizeHandler);
     }
-    window._db2jsonResizeHandler = () => adjustTableMaxHeight(resultsDiv);
-    window.addEventListener('resize', window._db2jsonResizeHandler);
+    window._db2jsonResizeHandler = null; // no longer needed
+    // window.addEventListener('resize', window._db2jsonResizeHandler); // REMOVE
 }
 
 function copyTableToClipboard(resultsDiv) {
@@ -535,7 +545,7 @@ function copyTableToClipboard(resultsDiv) {
 function feedbackCopySuccess() {
     const btn = document.getElementById('copyTableBtn');
     btn.innerText = 'Copied!';
-    setTimeout(() => { btn.innerText = 'Copy Table'; }, 1200);
+    setTimeout(() => { btn.innerText = 'Copy ResultSet'; }, 1200);
 }
 
 function fallbackCopy(text) {
@@ -1066,19 +1076,35 @@ function initDb2jsonUI() {
     if (window._db2jsonInited) return;
     window._db2jsonInited = true;
 
-    const copyTableBtn = document.getElementById('copyTableBtn');
     const sqlForm = document.getElementById('sqlForm');
-    const copySqlInputBtn = document.getElementById('copySqlInputBtn');
     const textarea = document.getElementById('sqlInput');
+    const copySqlInputBtn = document.getElementById('copySqlInputBtn');
+    const copyTableBtn = document.getElementById('copyTableBtn');
     const submitModeSel = document.getElementById('submitMode');
 
-    // Hide copy table button initially
+    // History UI
+    const dropdown = document.getElementById('sqlHistoryDropdown');
+    const clearBtn = document.getElementById('clearSqlHistoryBtn');
+    const editBtn = document.getElementById('editSqlHistoryBtn');
+    const modal = document.getElementById('historyModal');
+    const saveHistBtn = document.getElementById('historySaveBtn');
+    const cancelBtn = document.getElementById('historyCancelBtn');
+
+    // File toolbar
+    const openBtn = document.getElementById('openSqlFileBtn');
+    const saveBtn = document.getElementById('saveSqlBtn');
+    const saveAsBtn = document.getElementById('saveSqlFileBtn');
+
+    // Initial state
     if (copyTableBtn) copyTableBtn.classList.add('is-hidden');
 
-    // Register event handlers
+    // Form submit
     if (sqlForm) sqlForm.addEventListener('submit', handleSqlSubmit);
+
+    // Copy SQL input
     if (copySqlInputBtn) copySqlInputBtn.addEventListener('click', copySqlInput);
 
+    // Submit mode
     if (submitModeSel) {
         submitModeSel.addEventListener('change', () => {
             const form = document.getElementById('sqlForm');
@@ -1098,56 +1124,39 @@ function initDb2jsonUI() {
         submitModeSel.dispatchEvent(new Event('change'));
     }
 
-    // --- SQL History Dropdown ---
+    // History dropdown + actions
     populateSqlHistoryDropdown();
-    const dropdown = document.getElementById('sqlHistoryDropdown');
     if (dropdown) {
-        dropdown.addEventListener('change', function () {
-            if (dropdown.value) {
-                document.getElementById('sqlInput').value = dropdown.value;
-            }
-            // Update copy button enabled/disabled when selection changes
+        dropdown.addEventListener('change', () => {
+            if (dropdown.value) document.getElementById('sqlInput').value = dropdown.value;
             updateCopySqlEnabled();
         });
     }
-
-    // Wire copy enabled state to textarea input
-    if (textarea) {
-        textarea.addEventListener('input', updateCopySqlEnabled);
-        updateCopySqlEnabled();
-    }
-
-    // History actions
-    const clearBtn = document.getElementById('clearSqlHistoryBtn');
-    const editBtn = document.getElementById('editSqlHistoryBtn');
     if (clearBtn) clearBtn.addEventListener('click', clearSqlHistory);
     if (editBtn) editBtn.addEventListener('click', openEditHistoryModal);
-
-    const modal = document.getElementById('historyModal');
-    const saveHistBtn = document.getElementById('historySaveBtn');
-    const cancelBtn = document.getElementById('historyCancelBtn');
     if (saveHistBtn) saveHistBtn.addEventListener('click', saveEditedHistory);
     if (cancelBtn) cancelBtn.addEventListener('click', closeEditHistoryModal);
     if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) closeEditHistoryModal(); });
 
-    // Layout sync
+    // Textarea state and layout
+    if (textarea) {
+        textarea.addEventListener('input', updateCopySqlEnabled);
+        updateCopySqlEnabled();
+    }
     attachSqlInputResizeSync();
+    hardenSqlTextarea();
 
-    // File Open/Save – do NOT set textContent; icons are handled by CSS
-    const openBtn = document.getElementById('openSqlFileBtn');
+    // File Open/Save/Save As (icons handled by CSS; do not set textContent here)
     if (openBtn) openBtn.addEventListener('click', openSqlFile);
-
-    const saveBtn = document.getElementById('saveSqlBtn');
     if (saveBtn) {
         saveBtn.addEventListener('click', async () => {
             const ok = await saveSqlToCurrentFile();
             if (!ok) await saveSqlAsFile();
         });
     }
-
-    const saveAsBtn = document.getElementById('saveSqlFileBtn');
     if (saveAsBtn) saveAsBtn.addEventListener('click', saveSqlAsFile);
 
+    // Enable/disable Save appropriately; also triggers the context toast via the hook
     updateSaveButtonsState();
 }
 
@@ -1238,3 +1247,96 @@ if (document.readyState !== 'loading') {
 } else {
   document.addEventListener('DOMContentLoaded', () => { try { hardenSqlTextarea(); } catch {} });
 }
+
+// Precisely cap the results viewport so its bottom stays inside the window with a ~0.25" gap
+function sizeResultsViewport() {
+  const wrap = document.querySelector('#results .scroll-table-wrapper');
+  if (!wrap || !wrap.firstChild) return; // nothing to size yet
+
+  // Visual viewport (accounts for mobile toolbars) else fallback
+  const viewportH = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+
+  // Desired bottom gap ≈ 0.25in (~24 CSS px)
+  const GAP_PX = 24;
+
+  // Distance from top of viewport to wrapper
+  const top = wrap.getBoundingClientRect().top;
+
+  // Available space
+  let avail = Math.floor(viewportH - top - GAP_PX);
+  if (!Number.isFinite(avail)) return;
+  if (avail < 100) avail = 100;
+
+  // Apply cap; if current height exceeds cap (or unset), pin to cap
+  wrap.style.maxHeight = avail + 'px';
+
+  const curH = parseFloat(getComputedStyle(wrap).height) || 0;
+  if (!wrap.style.height || curH > avail + 1) {
+    wrap.style.height = avail + 'px';
+  }
+}
+
+(function initResultsViewportSizing() {
+  const run = () => { try { sizeResultsViewport(); } catch {} };
+
+  // Recompute when window/viewport changes
+  window.addEventListener('resize', run);
+  window.addEventListener('orientationchange', run);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', run);
+
+  // Recompute when the SQL input area changes size (desktop resize handle or CSS)
+  const ta = document.getElementById('sqlInput');
+  if (ta && 'ResizeObserver' in window) {
+    const ro = new ResizeObserver(run);
+    ro.observe(ta);
+  }
+
+  // Hook after results are rendered
+  const origRender = window.renderTable;
+  if (typeof origRender === 'function') {
+    window.renderTable = function patchedRenderTable(json, resultsDiv) {
+      const r = origRender.apply(this, arguments);
+      requestAnimationFrame(run);
+      return r;
+    };
+  } else {
+    // Fallback: try once after DOM ready
+    if (document.readyState !== 'loading') run();
+    else document.addEventListener('DOMContentLoaded', run);
+  }
+})();
+
+function setResultsMeta({ rowsCount, colsCount, tblname, libname }) {
+  const meta = document.getElementById('resultsMeta');
+  if (!meta) return;
+  let txt = `Rows: ${rowsCount}    Columns: ${colsCount}`;
+  if (tblname) txt += `    Table: ${tblname}`;
+  if (libname) txt += `    Library: ${libname}`;
+  // Use escapeHTML if already defined in your file
+  meta.innerHTML = `<b>${typeof escapeHTML === 'function' ? escapeHTML(txt) : txt}</b>`;
+  meta.title = txt;
+}
+
+// Call during UI init
+(function patchInit_forResultsMeta() {
+  const orig = window.initDb2jsonUI;
+  window.initDb2jsonUI = function patchedInit() {
+    if (typeof orig === 'function') orig();
+    ensureResultsMeta();
+  };
+})();
+
+// When rendering results, set the meta text and show the Copy button
+// Find the place where you finish building table HTML and assign resultsDiv.innerHTML.
+// Then add the following snippet:
+resultsDiv.innerHTML = html;   // after you inject the table markup
+// Show meta info next to Copy button
+try {
+  setResultsMeta({
+    rowsCount: rows.length,
+    colsCount: columns.length,
+    tblname,
+    libname
+  });
+  document.getElementById('copyTableBtn')?.classList.remove('is-hidden');
+} catch {}

@@ -64,13 +64,6 @@ body {
     /* bottom spacer 3px */
 }
 
-.scroll-table tfoot {
-    position: sticky;
-    bottom: 0;
-    z-index: 2;
-    background: #f0f0f0;
-}
-
 .scroll-table-wrapper {
     max-height: calc(100vh - 12em);
     overflow: auto;
@@ -171,10 +164,23 @@ td {
 }
 
 .copy-table-btn-row {
-    margin-top: 0.25em;
-    /* reduced to tighten space after Run SQL */
-    position: static;
-    z-index: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;      /* keep items on the left */
+  gap: 8px;
+}
+
+.results-meta {
+  /* was: flex: 0 1 60%; */
+  flex: 0 0 auto;         /* do not grow; size to content */
+  max-width: 65%;         /* allow long text to truncate, not push button */
+  min-width: 0;
+  font-size: 0.85em;
+  color: #444;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 8px;
 }
 
 .copy-table-btn {
@@ -196,7 +202,7 @@ td {
 
 /* Add a bit of space between the Copy Table button and the top of the table */
 #copyTableBtn {
-    margin-bottom: 0.5em;
+    margin-bottom: 0.5em;       /* natural button size */
 }
 
 .copy-table-btn:active,
@@ -622,4 +628,39 @@ td {
 /* Remove prior global cap so growth isn’t limited */
 #results .scroll-table-wrapper {
   max-height: none; /* allow rule above to control it */
+}
+
+/* Footer info bar that does not scroll with the table */
+.results-area #results .results-footer {
+  display: inline-block;      /* hug table width like the wrapper */
+  max-width: 100%;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 0.95em;
+  /* If the text gets long, allow horizontal scroll just for the footer text line */
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* Mobile/touch: reduce initial SQL input height by ~50% */
+@media (hover: none) and (pointer: coarse) {
+  #sqlInput {
+    height: 15vh !important;   /* was 30vh */
+    max-height: 40vh;          /* safety cap */
+  }
+}
+
+/* iOS/iPadOS: a touch smaller */
+@supports (-webkit-touch-callout: none) {
+  @media (hover: none) and (pointer: coarse) {
+    #sqlInput { height: 14vh !important; }
+  }
+}
+
+.sql-label-row {
+  margin-bottom: 6px; /* add space below the label + Run SQL row */
 }

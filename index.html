@@ -17,8 +17,7 @@
     <form id="sqlForm" method="post" enctype="multipart/form-data" autocomplete="off" spellcheck="true">
         <div class="sql-label-row">
             <label for="sqlInput">Type SQL or select from history:</label>
-            <button type="submit" class="run-sql-btn" title="Run the current SQL statement at the cursor">Run
-                SQL</button>
+            <button type="submit" class="run-sql-btn" title="Run the SQL statement at the cursor">Run SQL</button>
             <input type="hidden" id="submitMode" name="submitMode" value="POST_MULTIPART">
         </div>
 
@@ -33,31 +32,32 @@
 
             <div class="sql-textarea-row">
                 <div class="textarea-btn-container">
-                    <textarea id="sqlInput" name="q" rows="6" cols="80"
-                            autocomplete="off"
-                            autocorrect="off"
-                            spellcheck="false"
-                            data-gramm="false"
-                            data-enable-grammarly="false"></textarea>
+                    <textarea id="sqlInput" name="q" rows="6" cols="80" autocomplete="off" autocorrect="off"
+                        spellcheck="false" data-gramm="false" data-enable-grammarly="false"></textarea>
 
                     <div class="textarea-toolbar" role="toolbar" aria-label="SQL editor tools">
                         <!-- Open -->
-                        <button id="openSqlFileBtn" type="button" class="tool-btn icon-open" title="Open SQL File..." aria-label="Open SQL File"></button>
+                        <button id="openSqlFileBtn" type="button" class="tool-btn icon-open" title="Open SQL File..."
+                            aria-label="Open SQL File"></button>
 
                         <!-- Save -->
-                        <button id="saveSqlBtn" type="button" class="tool-btn icon-save" title="Save SQL to file" aria-label="Save" disabled></button>
+                        <button id="saveSqlBtn" type="button" class="tool-btn icon-save" title="Save SQL to file"
+                            aria-label="Save" disabled></button>
 
                         <!-- Save As -->
-                        <button id="saveSqlFileBtn" type="button" class="tool-btn icon-saveas" title="Save SQL as..." aria-label="Save SQL as"></button>
+                        <button id="saveSqlFileBtn" type="button" class="tool-btn icon-saveas" title="Save SQL as..."
+                            aria-label="Save SQL as"></button>
 
                         <!-- Copy (original markup preserved for checkmark feedback) -->
                         <button id="copySqlInputBtn" type="button" class="tool-btn copy-sql-btn"
-                                title="Copy SQL to clipboard" aria-label="Copy SQL to clipboard">
+                            title="Copy SQL to clipboard" aria-label="Copy SQL to clipboard">
                             <span class="copy-icon-wrapper">
                                 <svg class="copy-icon tool-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"
-                                     xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-                                    <rect x="5" y="3" width="11" height="14" rx="2" fill="#fff" stroke="#555" stroke-width="1.5" />
-                                    <rect x="2.5" y="6" width="11" height="11" rx="2" fill="#f5f5f5" stroke="#bbb" stroke-width="1.2" />
+                                    xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+                                    <rect x="5" y="3" width="11" height="14" rx="2" fill="#fff" stroke="#555"
+                                        stroke-width="1.5" />
+                                    <rect x="2.5" y="6" width="11" height="11" rx="2" fill="#f5f5f5" stroke="#bbb"
+                                        stroke-width="1.2" />
                                 </svg>
                                 <span class="copy-checkmark-feedback"></span>
                             </span>
@@ -73,12 +73,14 @@
     <input id="sqlFileInput" type="file" accept=".sql,.txt" hidden />
 
     <div class="results-area">
-        <div id="error"></div>
         <div class="copy-table-btn-row">
-            <button id="copyTableBtn" type="button" class="copy-table-btn is-hidden"
-                title="Copy resultSet to clipboard (for pasting into Excel or Sheets)">Copy ResultSet</button>
+            <div id="resultsMeta" class="results-meta"></div>
+            <button id="copyTableBtn" type="button" class="copy-table-btn is-hidden">Copy results</button>
         </div>
-        <div id="results"></div>
+        <div id="error" role="status" aria-live="polite"></div>
+        <div id="results">
+            <div class="scroll-table-wrapper"></div>
+        </div>
     </div>
 
     <!-- History Edit Modal -->
