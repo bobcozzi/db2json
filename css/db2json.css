@@ -200,6 +200,13 @@ td {
     display: none;
 }
 
+
+/* Make is-hidden definitive */
+.is-hidden,
+.results-meta.is-hidden {
+  display: none !important;
+}
+
 /* Add a bit of space between the Copy Table button and the top of the table */
 #copyTableBtn {
     margin-bottom: 0.5em;       /* natural button size */
@@ -342,11 +349,9 @@ td {
     font-size: 0.9em;
 }
 
-.modal-actions {
-    display: flex;
-    gap: 0.5em;
-    margin-top: 0.75em;
-    justify-content: flex-end;
+
+#historyDedupeBtn {
+  margin-right: auto; /* push the other buttons to the far right */
 }
 
 #historyTextarea {
@@ -511,8 +516,8 @@ td {
 /* Toasts */
 .toast-container {
   position: fixed;
-  top: 12px;
-  right: 12px;
+  top: 18px;
+  right: 18px;
   z-index: 9999;
   display: flex;
   flex-direction: column;
@@ -663,4 +668,35 @@ td {
 
 .sql-label-row {
   margin-bottom: 6px; /* add space below the label + Run SQL row */
+}
+
+.button_Align_Left {
+  text-align: left;
+}
+.button_Align_Right {
+  text-align: right;
+}
+@media (max-width: 520px) {
+  .modal .modal-actions { flex-wrap: wrap; }
+  #historyDedupeBtn { flex: 0 0 auto; }
+}
+
+/* Modal actions: left group on the left, save/cancel on the right */
+.modal .modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* split left/right groups */
+  gap: 8px;
+  width: 100%;
+}
+
+.modal .modal-actions .button_Align_Left,
+.modal .modal-actions .button_Align_Right {
+  display: flex;   /* keep buttons in each group on one line */
+  gap: 8px;
+}
+
+/* Optional: allow wrapping on narrow screens */
+@media (max-width: 520px) {
+  .modal .modal-actions { flex-wrap: wrap; }
 }

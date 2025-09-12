@@ -1,7 +1,3 @@
-// Maximum number of SQL statements to keep in history
-const MAX_SQL_HISTORY = 512;
-const HISTORY_KEY = 'db2json_SQL_History';
-
 // Optional: keep handles if the browser supports the File System Access API
 let _lastFileHandle = null;
 let _lastFileName = null;
@@ -330,12 +326,14 @@ async function handleSqlSubmit(e) {
     const errorDiv = document.getElementById('error');
     const resultsDiv = document.getElementById('results');
     const copyTableBtn = document.getElementById('copyTableBtn');
+    const resultsMetaEl = document.getElementById('resultsMeta');
 
     errorDiv.textContent = 'Running your request...';
     errorDiv.style.background = 'none';
     errorDiv.style.color = '#008800'; // dark 5250 green
     resultsDiv.innerHTML = '';
-    copyTableBtn.classList.add('is-hidden');
+    if (copyTableBtn) copyTableBtn.classList.add('is-hidden');
+    if (resultsMetaEl) resultsMetaEl.classList.add('is-hidden');
 
     // Get the statement at the cursor
     const { stmt: query, start: start, end: end } = getSQLStmtAtCursor(input, cursor);
@@ -414,6 +412,7 @@ async function handleSqlSubmit(e) {
         errorDiv.style.color = '#B71C1C'; // revert to red text
         copyTableBtn.classList.remove('is-hidden');
         copyTableBtn.onclick = () => copyTableToClipboard(resultsDiv);
+        if (resultsMetaEl) resultsMetaEl.classList.remove('is-hidden');
     } catch (err) {
         errorDiv.textContent = err.message || 'Error running query.';
         errorDiv.style.background = 'none';
@@ -504,6 +503,7 @@ function renderTable(json, resultsDiv) {
     try {
       setResultsMeta({ rowsCount: rows.length, colsCount: columns.length, tblname, libname });
       document.getElementById('copyTableBtn')?.classList.remove('is-hidden');
+      document.getElementById('resultsMeta')?.classList.remove('is-hidden');
     } catch {}
 
     // Debug: Log the generated HTML to check for <tfoot>
@@ -739,184 +739,6 @@ function copySqlInput() {
 })();
 
 
-function getSqlHistory() {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    if (!raw) return [];
-    // Happy path: valid JSON array
-    try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
-        if (typeof parsed === 'string') return parsed ? [parsed] : [];
-    } catch (_) {
-        // fall through to legacy parsing
-    }
-    // Legacy/self-heal: attempt to split raw string into statements
-    let arr = [];
-    if (typeof raw === 'string') {
-        // Prefer semicolon-based splitting to match editor and textarea behavior
-        try {
-            arr = splitSqlStatementsBySemicolon(raw)
-                .map(s => s.replace(/;\s*$/, '').trim())
-                .filter(Boolean);
-        } catch (_) { arr = []; }
-        // Fallback to splitting on blank lines if semicolons weren't present
-        if (arr.length === 0) {
-            arr = raw.replace(/\r\n/g, '\n')
-                .split(/\n\s*\n+/)
-                .map(s => s.trim())
-                .filter(Boolean);
-        }
-    }
-    // Persist back as proper JSON array for future loads
-    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr)); } catch (_) { }
-    return arr;
-}
-
-function saveSqlToHistory(stmt) {
-    if (!stmt || typeof stmt !== 'string') return;
-    let history = getSqlHistory();
-    // Avoid saving if same as last
-    if (history.length > 0 && history[0] === stmt) return;
-    history.unshift(stmt);
-    if (history.length > MAX_SQL_HISTORY) history = history.slice(0, MAX_SQL_HISTORY);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-}
-
-function populateSqlHistoryDropdown() {
-    const dropdown = document.getElementById('sqlHistoryDropdown');
-    const actions = document.querySelector('.history-actions');
-    if (!dropdown) return;
-    dropdown.innerHTML = '';
-    const history = getSqlHistory();
-    // Always show dropdown; when empty, show a disabled placeholder
-    dropdown.style.display = '';
-    if (actions) {
-        const edit = actions.querySelector('#editSqlHistoryBtn');
-        const clear = actions.querySelector('#clearSqlHistoryBtn');
-        if (edit) edit.disabled = false;
-        if (clear) clear.disabled = history.length === 0;
-    }
-    const defaultOpt = document.createElement('option');
-    defaultOpt.value = '';
-    defaultOpt.textContent = history.length ? '-- Previous SQL statements --' : '-- No history yet --';
-    dropdown.appendChild(defaultOpt);
-    dropdown.disabled = history.length === 0;
-    // Estimate max chars based on dropdown width and font size
-    let maxChars = 80;
-    if (dropdown) {
-        // Get computed font size in pixels
-        const style = window.getComputedStyle(dropdown);
-        const fontSizePx = parseFloat(style.fontSize) || 14;
-        // Estimate average char width (monospace: 0.6, proportional: 0.5)
-        const avgCharWidth = fontSizePx * 0.55;
-        // Use dropdown width (in px) to estimate
-        const widthPx = dropdown.offsetWidth || 400;
-        maxChars = Math.floor(widthPx / avgCharWidth);
-        if (maxChars < 20) maxChars = 20;
-        if (maxChars > 400) maxChars = 400;
-    }
-    if (history.length) {
-        for (const stmt of history) {
-            const opt = document.createElement('option');
-            opt.value = stmt;
-            const label = (stmt || '').replace(/\s+/g, ' ').trim();
-            if (label.length > maxChars) {
-                opt.textContent = label.slice(0, maxChars - 3) + '...';
-            } else {
-                opt.textContent = label;
-            }
-            dropdown.appendChild(opt);
-        }
-    }
-
-    // --- Resize observer for dropdown ---
-    if (!dropdown._resizeObserverAttached) {
-        if (window.ResizeObserver) {
-            const ro = new ResizeObserver(() => {
-                // Rerender dropdown options on resize
-                populateSqlHistoryDropdown();
-            });
-            ro.observe(dropdown);
-            dropdown._resizeObserverAttached = true;
-        } else {
-            // Fallback: listen for window resize if ResizeObserver not available
-            if (!dropdown._windowResizeHandlerAttached) {
-                window.addEventListener('resize', populateSqlHistoryDropdown);
-                dropdown._windowResizeHandlerAttached = true;
-            }
-        }
-    }
-}
-
-function clearSqlHistory() {
-    if (!confirm('Clear all saved SQL statements from this browser?')) return;
-    localStorage.removeItem(HISTORY_KEY);
-    populateSqlHistoryDropdown();
-}
-
-function openEditHistoryModal() {
-    const modal = document.getElementById('historyModal');
-    const ta = document.getElementById('historyTextarea');
-    if (!modal || !ta) return;
-    const history = getSqlHistory();
-    // Join statements with a semicolon + blank line to reflect semicolon separation
-    ta.value = history.map(s => s.endsWith(';') ? s : s + ';').join('\n\n');
-    modal.setAttribute('aria-hidden', 'false');
-    modal.style.display = 'block';
-    ta.focus();
-    // Allow ESC to close while modal is open
-    const escHandler = (e) => {
-        if (e.key === 'Escape') {
-            closeEditHistoryModal();
-            document.removeEventListener('keydown', escHandler);
-        }
-    };
-    document.addEventListener('keydown', escHandler);
-}
-
-function closeEditHistoryModal() {
-    const modal = document.getElementById('historyModal');
-    const ta = document.getElementById('historyTextarea');
-    if (!modal || !ta) return;
-    modal.setAttribute('aria-hidden', 'true');
-    modal.style.display = 'none';
-}
-
-function saveEditedHistory() {
-    const ta = document.getElementById('historyTextarea');
-    if (!ta) return;
-    // Split on unquoted semicolons to preserve multi-line statements
-    let blocks = splitSqlStatementsBySemicolon(ta.value.replace(/\r\n/g, '\n'))
-        .map(s => s.replace(/;\s*$/, '').trim())
-        .filter(Boolean);
-    if (blocks.length > MAX_SQL_HISTORY) blocks = blocks.slice(0, MAX_SQL_HISTORY);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(blocks));
-    closeEditHistoryModal();
-    populateSqlHistoryDropdown();
-}
-
-// Split by semicolons that are not inside single or double quotes
-function splitSqlStatementsBySemicolon(input) {
-    const out = [];
-    let inSingle = false, inDouble = false;
-    let start = 0;
-    for (let i = 0; i < input.length; i++) {
-        const c = input[i];
-        if (c === "'" && !inDouble) {
-            inSingle = !inSingle;
-        } else if (c === '"' && !inSingle) {
-            inDouble = !inDouble;
-        } else if (c === ';' && !inSingle && !inDouble) {
-            const part = input.slice(start, i).trim();
-            if (part) out.push(part);
-            start = i + 1;
-        }
-    }
-    const last = input.slice(start).trim();
-    if (last) out.push(last);
-    return out;
-}
-
 function attachSqlInputResizeSync() {
     // Tear down any previous observers/listeners
     if (window._db2jsonRO && window._db2jsonRO.disconnect) window._db2jsonRO.disconnect();
@@ -1106,31 +928,31 @@ function initDb2jsonUI() {
 
     // Submit mode
     if (submitModeSel) {
-        submitModeSel.addEventListener('change', () => {
-            const form = document.getElementById('sqlForm');
-            if (!form) return;
-            const mode = submitModeSel.value || 'GET';
-            if (mode === 'GET') {
-                form.method = 'get';
-                form.enctype = 'application/x-www-form-urlencoded';
-            } else if (mode === 'POST_URLENC') {
-                form.method = 'post';
-                form.enctype = 'application/x-www-form-urlencoded';
-            } else {
-                form.method = 'post';
-                form.enctype = 'multipart/form-data';
-            }
-        });
-        submitModeSel.dispatchEvent(new Event('change'));
+      submitModeSel.addEventListener('change', () => {
+        const form = document.getElementById('sqlForm');
+        if (!form) return;
+        const mode = submitModeSel.value || 'GET';
+        if (mode === 'GET') {
+          form.method = 'get';
+          form.enctype = 'application/x-www-form-urlencoded';
+        } else if (mode === 'POST_URLENC') {
+          form.method = 'post';
+          form.enctype = 'application/x-www-form-urlencoded';
+        } else {
+          form.method = 'post';
+          form.enctype = 'multipart/form-data';
+        }
+      });
+      submitModeSel.dispatchEvent(new Event('change'));
     }
 
     // History dropdown + actions
     populateSqlHistoryDropdown();
     if (dropdown) {
-        dropdown.addEventListener('change', () => {
-            if (dropdown.value) document.getElementById('sqlInput').value = dropdown.value;
-            updateCopySqlEnabled();
-        });
+      dropdown.addEventListener('change', () => {
+        if (dropdown.value) document.getElementById('sqlInput').value = dropdown.value;
+        updateCopySqlEnabled();
+      });
     }
     if (clearBtn) clearBtn.addEventListener('click', clearSqlHistory);
     if (editBtn) editBtn.addEventListener('click', openEditHistoryModal);
@@ -1140,8 +962,8 @@ function initDb2jsonUI() {
 
     // Textarea state and layout
     if (textarea) {
-        textarea.addEventListener('input', updateCopySqlEnabled);
-        updateCopySqlEnabled();
+      textarea.addEventListener('input', updateCopySqlEnabled);
+      updateCopySqlEnabled();
     }
     attachSqlInputResizeSync();
     hardenSqlTextarea();
@@ -1149,10 +971,10 @@ function initDb2jsonUI() {
     // File Open/Save/Save As (icons handled by CSS; do not set textContent here)
     if (openBtn) openBtn.addEventListener('click', openSqlFile);
     if (saveBtn) {
-        saveBtn.addEventListener('click', async () => {
-            const ok = await saveSqlToCurrentFile();
-            if (!ok) await saveSqlAsFile();
-        });
+      saveBtn.addEventListener('click', async () => {
+        const ok = await saveSqlToCurrentFile();
+        if (!ok) await saveSqlAsFile();
+      });
     }
     if (saveAsBtn) saveAsBtn.addEventListener('click', saveSqlAsFile);
 
@@ -1316,27 +1138,3 @@ function setResultsMeta({ rowsCount, colsCount, tblname, libname }) {
   meta.innerHTML = `<b>${typeof escapeHTML === 'function' ? escapeHTML(txt) : txt}</b>`;
   meta.title = txt;
 }
-
-// Call during UI init
-(function patchInit_forResultsMeta() {
-  const orig = window.initDb2jsonUI;
-  window.initDb2jsonUI = function patchedInit() {
-    if (typeof orig === 'function') orig();
-    ensureResultsMeta();
-  };
-})();
-
-// When rendering results, set the meta text and show the Copy button
-// Find the place where you finish building table HTML and assign resultsDiv.innerHTML.
-// Then add the following snippet:
-resultsDiv.innerHTML = html;   // after you inject the table markup
-// Show meta info next to Copy button
-try {
-  setResultsMeta({
-    rowsCount: rows.length,
-    colsCount: columns.length,
-    tblname,
-    libname
-  });
-  document.getElementById('copyTableBtn')?.classList.remove('is-hidden');
-} catch {}

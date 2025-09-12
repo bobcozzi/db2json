@@ -1,11 +1,15 @@
 # Changelog
 
-## 0.0.8 - 11-SEPT-2025 -
-- The resultset table of the DB2 Query sample HTML page "app" now allows  resizing of the table by dragging its lower righthand corner.
-- On Apple devices, the SQL entry now avoids that Apple "autocorrect" issue that some users were experiencing.
+## 0.0.9 - 12-SEPT-2025 -
+- The SQL Statement History in the Db2 Query HTML App now avoids adding duplicate entries. Once a statement has been archived in the history log, running that statement in the future avoids adding it a second time. Previously it would avoid adding duplicate statements only when they were run consecutively. Now if the SQL statement being run has been previously logged, it is not logged.
+- A new "Remove Duplicates" button has been added to the SQL Statement History dialog. Note this takes effect immediately.
+- The ResultSet rows and columns message is moved to the top of the result set list, next to the Copy ResultSet button.
+- The resultset table of the DB2 Query example HTML page/app now allows resizing of the table by dragging its lower righthand corner.
+  - This is not supported for some reason on mobile devices, however.
+- On Apple devices, the SQL input area now avoids that classic Apple "autocorrect" issue that some users were experiencing.
 
 ## 0.0.7 - 10-SEPT-2025 -
-- Now when Db2JSON is run, it checks for and adds the `QIBM_CLI_MUTE_SPURIOUS_JOB_MSG=Y` environment variable. This reduces the noise produced by SQL CLI by asking it to filter excessive SQ99999 / HY010 messages from being sent to the joblog. The Job-level environment attribute `QIBM_CLI_MUTE_SPURIOUS_JOB_MSG` can be set to `Y` to enable this filtering. Db2JSON now automatically creates this environment variable and sets it to `Y` if the environment variable is not already defined. That is, it will create it, but will not change it.
+- Now when Db2JSON is run, it checks for and adds the `QIBM_CLI_MUTE_SPURIOUS_JOB_MSG=Y` environment variable. This reduces the noise produced by SQL CLI by asking it to filter excessive SQ99999 / HY010 messages from being sent to the joblog. The Job-level environment attribute `QIBM_CLI_MUTE_SPURIOUS_JOB_MSG`, when set to `Y` enables this filtering. Db2JSON now automatically creates this environment variable and sets it to `Y`. If the environment variable is not already defined it will create it. If it is already defined DB2JSON does not modify it.
 - Various bug fixed.
 - Renamed the db2json.html file to index.html
 - Updated the notes on configuration the HTTP Server on IBM i
@@ -45,7 +49,7 @@
 - Multiple SQL Statements:
   - You may specify multiple SQL statements in the SQL Editor window (SQL input area) by separating the SQL statements with a semicolon. When a semicolon is used, the "Run SQL" button searches the editor box for the start and end location for the statement in which the cursor is located at the time it is pressed.
   - We currently do not support running more than one statement per "Run SQL" request.
-- The DB2JSON.cpp file has been staged to support SQL syntax checking in the future. You may see references to the QSQCHKS API in it, but it is not yet implemented.
+- The DB2JSON.cpp file has been staged to support SQL syntax checking in the future. You may see references to the QSQCHKS API in it,~~but it is not yet implemented~~. (Syntax checking has been added in v0.0.4 in September 2025).
 
 ## 0.0.2 - Minor pdate - 21 AUGUST 2025
 - Added support for both GET and POST CGI Form request methods.
