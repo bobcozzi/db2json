@@ -455,42 +455,55 @@ function renderTable(json, resultsDiv) {
 
     const isRightAlignType = t => /^(DECIMAL|DEC|NUMERIC|DECFLOAT|ZONED|INT|INTEGER|SMALLINT|BIGINT|TINYINT|FLOAT|REAL|DOUBLE|DATE|TIME|TIMESTAMP)$/i.test(t);
 
-    if (colMeta) {
-        for (const col of colMeta) {
-            let hdr = col.colhdr || col.name;
-            if (hdr.length > 20) {
-                let lines = [];
-                for (let i = 0; i < 60 && i < hdr.length; i += 20) {
-                    let part = hdr.substr(i, 20).trim();
-                    if (part) lines.push(part);
-                }
-                hdr = lines.join('<br />');
+    // Determine which columns to wrap (LOBs always; long char types > 250)
+    const wrapCols = new Set();
+    if (Array.isArray(colMeta)) {
+      colMeta.forEach((c, i) => {
+        const len = Number(c.length) || 0;
+        const t = String(c.type || '');
+        const isLob = /CLOB|DBCLOB|BLOB|XML/i.test(t);
+        const isLongChar = len > 250 && /(CHAR|VARCHAR|GRAPHIC|VARGRAPHIC)/i.test(t);
+        if (isLob || isLongChar) wrapCols.add(i);
+      });
+    }
+
+    if (Array.isArray(colMeta)) {
+      colMeta.forEach((col, idx) => {
+          let hdr = col.colhdr || col.name;
+          if (hdr.length > 20) {
+            let lines = [];
+            for (let i = 0; i < 60 && i < hdr.length; i += 20) {
+              let part = hdr.substr(i, 20).trim();
+              if (part) lines.push(part);
             }
-            let thTitle = buildColTitle(col);
-            let thClass = isRightAlignType(col.type) ? ' class="right"' : '';
-            html += `<th${thClass} title="${thTitle.replace(/"/g, '&quot;')}">${hdr}</th>`;
-        }
+            hdr = lines.join('<br />');
+          }
+          let thTitle = buildColTitle(col);
+          const thClasses = [];
+          if (isRightAlignType(col.type)) thClasses.push('right');
+          if (wrapCols.has(idx)) thClasses.push('wrap');
+          const thClassAttr = thClasses.length ? ` class="${thClasses.join(' ')}"` : '';
+          html += `<th${thClassAttr} title="${thTitle}">${hdr}</th>`;
+      });
     } else {
-        for (const col of columns) {
-            html += `<th>${col}</th>`;
-        }
+      for (const col of columns) {
+        html += `<th>${col}</th>`;
+      }
     }
 
     html += '</tr></thead><tbody>';
     for (const row of rows) {
         html += '<tr>';
         for (let colIdx = 0; colIdx < columns.length; ++colIdx) {
-            const colName = columns[colIdx];
-            // Always use colMeta (from attr) for type, as in thead
-            let tdClass = '';
-            if (colMeta && colMeta[colIdx] && isRightAlignType(colMeta[colIdx].type)) {
-                tdClass = ' class="right"';
-            }
-            // Extract the cell data for this row/column
-            const cellData = row[colName] ?? '';
-            // Escape the cell data for HTML safety
-            const safeCellData = escapeHTML(cellData);
-            html += `<td${tdClass}>${safeCellData}</td>`;
+          const colName = columns[colIdx];
+          const classes = [];
+          if (colMeta && colMeta[colIdx] && isRightAlignType(colMeta[colIdx].type)) classes.push('right');
+          if (wrapCols.has(colIdx)) classes.push('wrap');
+          const tdClassAttr = classes.length ? ` class="${classes.join(' ')}"` : '';
+          const cellData = row[colName] ?? '';
+          const safeCellData = escapeHTML(cellData);
+          // Add title for full value on hover
+          html += `<td${tdClassAttr} title="${escapeHTML(String(cellData))}">${safeCellData}</td>`;
         }
         html += '</tr>';
     }
@@ -498,28 +511,43 @@ function renderTable(json, resultsDiv) {
 
     html += '</table></div>'; // close .scroll-table-wrapper
 
-    // Now inject the table
+    // Inject the table
     resultsDiv.innerHTML = html;
+
+    // Column widths before DataTables modifies the DOM
+    try { syncColWidths(resultsDiv); } catch {}
+
     try {
+      // Destroy prior instance if any
+      if (resultsDiv._dt) { resultsDiv._dt.destroy(); resultsDiv._dt = null; }
+
+      const tableEl = resultsDiv.querySelector('table');
+      if (tableEl && window.simpleDatatables?.DataTable) {
+        resultsDiv._dt = new simpleDatatables.DataTable(tableEl, {
+          searchable: true
+          // perPage: 27   // remove fixed size; we fit dynamically
+        });
+
+        // Fit per-page after DT builds its DOM
+        requestAnimationFrame(() => fitDataTablePerPage(resultsDiv));
+
+        // Re-fit on DT updates
+        const dt = resultsDiv._dt;
+        if (dt?.on) {
+          dt.on('datatable.init', () => requestAnimationFrame(() => fitDataTablePerPage(resultsDiv)));
+          dt.on('datatable.sort', () => requestAnimationFrame(() => fitDataTablePerPage(resultsDiv)));
+          dt.on('datatable.page', () => requestAnimationFrame(() => fitDataTablePerPage(resultsDiv)));
+          dt.on('datatable.search', () => requestAnimationFrame(() => fitDataTablePerPage(resultsDiv)));
+        }
+      }
+
       setResultsMeta({ rowsCount: rows.length, colsCount: columns.length, tblname, libname });
       document.getElementById('copyTableBtn')?.classList.remove('is-hidden');
       document.getElementById('resultsMeta')?.classList.remove('is-hidden');
     } catch {}
 
-    // Debug: Log the generated HTML to check for <tfoot>
-    console.log('Generated table HTML:', html);
-    // Wait for DOM update before measuring and setting col widths
-    window.requestAnimationFrame(() => {
-        // adjustTableMaxHeight(resultsDiv);   // REMOVE: CSS controls max-height now
-        syncColWidths(resultsDiv);
-    });
-
-    // Remove any previous resize event to avoid duplicates, then set a fresh one
-    if (window._db2jsonResizeHandler) {
-        window.removeEventListener('resize', window._db2jsonResizeHandler);
-    }
-    window._db2jsonResizeHandler = null; // no longer needed
-    // window.addEventListener('resize', window._db2jsonResizeHandler); // REMOVE
+    // Debug (optional)
+    // console.debug('Generated table HTML:', html);
 }
 
 function copyTableToClipboard(resultsDiv) {
@@ -584,49 +612,57 @@ function adjustTableMaxHeight(resultsDiv) {
 
 
 function syncColWidths(resultsDiv) {
-    const table = resultsDiv.querySelector('.scroll-table');
-    if (table) {
-        const headerCells = table.querySelectorAll('thead th');
-        const maxColWidthCh = 150;
-        let colWidths = [];
+  const table = resultsDiv?.querySelector?.('.scroll-table');
+  if (!table) return;
+  const thead = table.tHead;
+  const headerRow = thead?.rows?.[0];
+  if (!headerRow) return;
+  const headerCells = headerRow.cells;
+     const maxColWidthCh = 150;
+     let colWidths = [];
+    Array.from(headerCells).forEach((th, colIdx) => {
+       const isNumeric = th.classList.contains('right');
+       // Calculate header width based on the longest line after splitting on <br>
+       let headerLines = (th.innerHTML || '').split(/<br\s*\/?/i);
+       let headerLen = 0;
+       for (let line of headerLines) {
+         // Remove any HTML tags and trim
+         let text = line.replace(/<[^>]+>/g, '').trim();
+         if (text.length > headerLen) headerLen = text.length;
+       }
+       let maxWidthCh = headerLen;
 
-        headerCells.forEach((th, colIdx) => {
-            const isNumeric = th.classList.contains('right');
-            // Calculate header width based on the longest line after splitting on <br>
-            let headerLines = (th.innerHTML || '').split(/<br\s*\/?/i);
-            let headerLen = 0;
-            for (let line of headerLines) {
-                // Remove any HTML tags and trim
-                let text = line.replace(/<[^>]+>/g, '').trim();
-                if (text.length > headerLen) headerLen = text.length;
-            }
-            let maxWidthCh = headerLen;
+      const bodyRows = table.tBodies?.[0]?.rows || [];
+      Array.from(bodyRows).forEach(tr => {
+        const td = tr.cells?.[colIdx];
+        if (!td) return;
+        const cellLen = (td.textContent || '').trim().length;
+        if (cellLen > maxWidthCh) maxWidthCh = cellLen;
+      });
 
-            table.querySelectorAll('tbody tr').forEach(tr => {
-                const td = tr.children[colIdx];
-                if (td) {
-                    const cellLen = (td.textContent || '').trim().length;
-                    if (cellLen > maxWidthCh) maxWidthCh = cellLen;
-                }
-            });
+      if (maxWidthCh > maxColWidthCh) maxWidthCh = maxColWidthCh;
 
-            if (maxWidthCh > maxColWidthCh) maxWidthCh = maxColWidthCh;
+      // If numeric, don’t let the column balloon too wide
+      if (isNumeric) {
+        if (maxWidthCh > 20) maxWidthCh = 20;
+        maxWidthCh += 2; // add a little extra space for right alignment
+      } else {
+        maxWidthCh += 2; // small cushion for proportional fonts so 20 chars don’t wrap early
+      }
+      colWidths.push(maxWidthCh);
+    });
 
-            // If numeric, don’t let the column balloon too wide
-            if (isNumeric) {
-                if (maxWidthCh > 20) maxWidthCh = 20;
-                maxWidthCh += 2; // add a little extra space for right alignment
-            }
-            colWidths.push(maxWidthCh);
-        });
-
-        let colgroupHtml = '';
-        for (let w of colWidths) {
-            // colgroupHtml += `<col style="min-width: ${w}ch; max-width: ${w}ch;">`;
-            colgroupHtml += `<col style="min-width: ${w}ch;">`;
-        }
-        table.querySelector('colgroup').innerHTML = colgroupHtml;
+    let colgroupHtml = '';
+    for (let w of colWidths) {
+      // colgroupHtml += `<col style="min-width: ${w}ch; max-width: ${w}ch;">`;
+      colgroupHtml += `<col style="min-width: ${w}ch;">`;
     }
+    let colgroup = table.querySelector('colgroup');
+    if (!colgroup) {
+      colgroup = document.createElement('colgroup');
+      table.insertBefore(colgroup, table.firstChild);
+    }
+    colgroup.innerHTML = colgroupHtml;
 }
 
 function copySqlInput() {
@@ -1099,7 +1135,7 @@ function sizeResultsViewport() {
 }
 
 (function initResultsViewportSizing() {
-  const run = () => { try { sizeResultsViewport(); } catch {} };
+  const run = () => { try { sizeResultsViewport(); fitDataTablePerPage(); } catch {} };
 
   // Recompute when window/viewport changes
   window.addEventListener('resize', run);
@@ -1137,4 +1173,37 @@ function setResultsMeta({ rowsCount, colsCount, tblname, libname }) {
   // Use escapeHTML if already defined in your file
   meta.innerHTML = `<b>${typeof escapeHTML === 'function' ? escapeHTML(txt) : txt}</b>`;
   meta.title = txt;
+}
+
+function fitDataTablePerPage(resultsDiv = document.getElementById('results')) {
+  try {
+    const root = resultsDiv;
+    const dt = root?._dt;
+    if (!root || !dt) return;
+
+    const wrap = root.querySelector('.scroll-table-wrapper');
+    const firstRow = root.querySelector('tbody tr');
+    const thead = root.querySelector('thead');
+    const topBar = wrap?.querySelector('.dataTable-top');
+    const bottomBar = wrap?.querySelector('.dataTable-bottom');
+    if (!wrap || !firstRow) return;
+
+    const wrapH = wrap.clientHeight || 0;
+    const headH = thead ? thead.offsetHeight : 0;
+    const topH = topBar ? topBar.offsetHeight : 0;
+    const bottomH = bottomBar ? bottomBar.offsetHeight : 0;
+    const padding = 12;
+    const avail = Math.max(0, wrapH - headH - topH - bottomH - padding);
+    const rowH = Math.max(20, firstRow.getBoundingClientRect().height || 24);
+
+    let perPage = Math.floor(avail / rowH);
+    perPage = Math.max(8, Math.min(perPage, 200)); // sane bounds
+    if (!Number.isFinite(perPage)) return;
+
+    if (dt.options?.perPage !== perPage) {
+      if (typeof dt.update === 'function') dt.update({ perPage });
+      else { dt.options.perPage = perPage; if (typeof dt.refresh === 'function') dt.refresh(); }
+      if (typeof dt.setPage === 'function') dt.setPage(1);
+    }
+  } catch {}
 }

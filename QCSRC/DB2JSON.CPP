@@ -177,6 +177,7 @@ struct json_symbols_t {
     const char* POSITION;
     const char* ERROR;
     const char* SQLSTATE;
+    const char* SQLCODE;
     const char* MSGTEXT;
     const char* DB2JSON;
 };
@@ -219,6 +220,7 @@ const json_symbols_t json_ascii = {
     "\"position\"",
     "\"error\"",
     "\"sqlstate\"",
+    "\"sqlcode\"",
     "\"msgtext\"",
     "\"DB2JSON\""
 };
@@ -260,6 +262,7 @@ const json_symbols_t json_job = {
     "\"position\"",
     "\"error\"",
     "\"sqlstate\"",
+    "\"sqlcode\"",
     "\"msgtext\"",
     "\"DB2JSON\""
 };
@@ -423,13 +426,15 @@ int checkError(std::ostream& output, SQLRETURN rc, SQLHANDLE handle, SQLSMALLINT
     {
         return 0;
     }
+
+    char buff[256];
     SQLCHAR sqlstate[11] = {0};
     SQLCHAR message[SQL_MAX_MESSAGE_LENGTH+1] = {0};
-    SQLINTEGER nativeError = 0;
+    SQLINTEGER sqlcode = 0;
     SQLSMALLINT textLen = 0;
     if (handle != SQL_NULL_HANDLE)
     {
-        SQLGetDiagRec(type, handle, 1, sqlstate, &nativeError, message, sizeof(message)-1, &textLen);
+        SQLGetDiagRec(type, handle, 1, sqlstate, &sqlcode, message, sizeof(message)-1, &textLen);
     }
     else if (msg != NULL && strlen(msg) > 0) {
         textLen = strlen(msg);
@@ -439,26 +444,66 @@ int checkError(std::ostream& output, SQLRETURN rc, SQLHANDLE handle, SQLSMALLINT
         }
     }
     message[textLen] = 0x00;
-    logSQLMsg("Error: %5s, %s",sqlstate, message);
+    logSQLMsg("SQLSTATE: %5s  SQLCODE: %d - %s",sqlstate, sqlcode, message);
 
     std::string sqlstateStr = cvtToASCII(reinterpret_cast<const char*>(sqlstate));
     std::string msgtextStr = cvtToASCII(reinterpret_cast<const char*>(message));
+    std::string sqlcodeStr;
+    char sqlcodeBuf[128];
+
+    switch (sqlcode) {
+        case -901:
+            strcpy(sqlcodeBuf, "SQL system error (-901)");
+            break;
+        case -902:
+            strcpy(sqlcodeBuf, "System error (-902)");
+            break;
+        case -204:
+            strcpy(sqlcodeBuf, "Object not found (-204)");
+            break;
+        case -443:
+            strcpy(sqlcodeBuf, "Routine/function error (-443)");
+            break;
+        case -7008:
+            strcpy(sqlcodeBuf, "Object not valid for operation (-7008)");
+            break;
+        case -30020:
+            strcpy(sqlcodeBuf, "Communication error with database host server (-30020)");
+            break;
+        default:
+            // fallback: just put the numeric code in text form
+            if (sqlcode != 0) {
+                sprintf(sqlcodeBuf, "non-zero SQLCODE detected", (int)sqlcode);
+            }
+            break;
+    }
+
+    // Convert to ASCII for JSON
+    if (sqlcode != 0)
+    {
+       sprintf(buff," SQLCODE: %d - %s", sqlcode, sqlcodeBuf);
+       sqlcodeStr = cvtToASCII(reinterpret_cast<const char*>(buff));
+    }
+
+
+// Then include sqlcodeStr in your JSON output
+
     bool  rootWasOpen = closeJsonNode(output);
 
     if (!rootWasOpen) {
         output << json->LCURLY; // open root object if not already open
         g_rootOpen = true;
     }
-    char buf[16];
-    sprintf(buf,"%d", errPos);
-    std::string errPosStr = cvtToASCII(reinterpret_cast<const char*>(buf));
+    sprintf(buff,"%d", errPos);
+    std::string errPosStr = cvtToASCII(reinterpret_cast<const char*>(buff));
+
     output << json->LF
          << json->ERROR << json->COLON << json->LCURLY
          << json->SQLSTATE << json->COLON
              << json->QUOTE << jsonEscape(sqlstateStr) << json->QUOTE << json->COMMA
          << json->POSITION << json->COLON << errPosStr << json->COMMA
          << json->MSGTEXT << json->COLON
-             << json->QUOTE << jsonEscape(msgtextStr) << json->QUOTE
+             << json->QUOTE << jsonEscape(msgtextStr) << jsonEscape(sqlcodeStr) << json->QUOTE
          << json->RCURLY;
     if (g_rootOpen) {
         output << json->LF << json->RCURLY << json->LF;
@@ -1229,6 +1274,10 @@ int main(int argc, char *argv[])
     rc = SQLSetConnectAttr(hDbc,SQL_ATTR_EXTENDED_COL_INFO, (SQLPOINTER)&attr,0);
     ifCheckError(output,  rc, hDbc, SQL_HANDLE_DBC, "SetConnAttr");
 
+    attr = SQL_AUTOCOMMIT_ON;
+    SQLSetConnectAttr(hDbc, SQL_ATTR_AUTOCOMMIT, (SQLPOINTER)&attr, 0);
+
+
 #ifndef TOASCII
     attr = SQL_TRUE;   // Return UTF-8 data
     rc = SQLSetConnectAttr(hDbc, SQL_ATTR_UTF8, (SQLPOINTER)&attr,0);
@@ -1564,8 +1613,10 @@ int main(int argc, char *argv[])
     g_rootOpen = false;
 
     // Cleanup
-    if (hStmt)
+    if (hStmt) {
+        SQLCloseCursor(hStmt);
         SQLFreeHandle(SQL_HANDLE_STMT, hStmt);
+    }
     if (hDbc)
         SQLDisconnect(hDbc);
     if (hDbc)
@@ -1651,34 +1702,35 @@ const char* sqlTypeToJSONText(int sqlType) {
 
 int SQLSyntaxCheck( std::string& sqlStmt, std::string& rtnMsg )
 {
-Qus_EC_t ec;
-int  recProc = 0;
-int  restrictedVerb = 0;
-char langID[10];
-char msgid[8];
-char msgfile[11];
-char msgflib[11];
-char msgf[21];
-char subValues[11];
-char fmtCtrl[11];
-char buffer[4096];
-char* msgInfo = buffer;
+    Qus_EC_t ec;
+    int  recProc = 0;
+    int  restrictedVerb = 0;
+    char langID[10];
+    char msgid[8];
+    char msgfile[11];
+    char msgflib[11];
+    char msgf[21];
+    char subValues[11];
+    char fmtCtrl[11];
+    char buffer[4096];
+    char* msgInfo = buffer;
 
 
 typedef _Packed struct tag_Statement_Info
-   {
+{
       char Message_File_Name[10];
       char Message_File_Library_Name[10];
       int  Number_of_Statements_Processed;
       Qsq_Statement_I_t Statement;
       char msgdata[1920];
-   } sqlStmtInfo_t;
+} sqlStmtInfo_t;
 
-typedef _Packed struct tagsqlOptions {
+typedef _Packed struct tagsqlOptions
+{
        int           key;
        int           length;
        char          data[10];
-    } sqlOption_t;
+} sqlOption_t;
 
  struct {
     int           keys;

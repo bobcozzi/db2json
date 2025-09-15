@@ -47,6 +47,9 @@ body {
     box-shadow: 0 8px 16px -4px #bbb;
     vertical-align: middle;
     background-clip: padding-box;
+    white-space: normal;       /* headers can wrap (you already inject <br>) */
+    word-break: normal;
+    overflow-wrap: normal;
 }
 
 /* Add minimal top/bottom breathing room for header cells without using padding, to avoid sticky bleed */
@@ -88,6 +91,10 @@ td {
     font-size: var(--table-font-size, 1em);
     font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
     white-space: pre-wrap;
+    white-space: nowrap;       /* prevent 2-line rows */
+    word-break: normal;
+    overflow: hidden;          /* clip inside the cell */
+    text-overflow: ellipsis;   /* … when clipped */
 }
 
 .scroll-table th.right {
@@ -696,7 +703,41 @@ td {
   gap: 8px;
 }
 
-/* Optional: allow wrapping on narrow screens */
-@media (max-width: 520px) {
-  .modal .modal-actions { flex-wrap: wrap; }
+/* Simple-DataTables inside our scroll wrapper: our wrapper scrolls, not the plugin */
+#results .scroll-table-wrapper .dataTable-container {
+  overflow: visible !important;
+  max-height: none !important;
+  padding-bottom: 44px; /* avoid last rows hiding under sticky pager */
+}
+
+/* Keep pager/top visible inside the wrapper */
+#results .scroll-table-wrapper .dataTable-bottom {
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  border-top: 1px solid #ddd;
+  z-index: 3;
+}
+#results .scroll-table-wrapper .dataTable-top {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 3;
+}
+
+/* If Simple-DataTables forces wrapping, neutralize it here */
+#results .scroll-table-wrapper .dataTable-table td {
+  white-space: nowrap;
+  word-break: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#results .scroll-table tbody td.wrap {
+  white-space: normal;
+  max-width: 250ch;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow: visible;
+  text-overflow: clip;
 }

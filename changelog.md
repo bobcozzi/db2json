@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.0.10 - 15-SEPT-2025
+- We now close the SQL Cursor before freeing the statement handle. We also now use AUTOCOMMIT for users who insist on using the DB2JSON.PGM to run non-query statements, such as INSERT/UPDATE/DELETE/MERGE. Also the SQL CODE is returned with the SQLSTATE when an error is detected.
+
 ## 0.0.9 - 12-SEPT-2025 -
 - The SQL Statement History in the Db2 Query HTML App now avoids adding duplicate entries. Once a statement has been archived in the history log, running that statement in the future avoids adding it a second time. Previously it would avoid adding duplicate statements only when they were run consecutively. Now if the SQL statement being run has been previously logged, it is not logged.
 - A new "Remove Duplicates" button has been added to the SQL Statement History dialog. Note this takes effect immediately.

@@ -4,16 +4,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bob Cozzi's Db2JSON Test Composer using SQL</title>
+    <title>Db2 Query: Bob Cozzi's Db2JSON Example HTML App</title>
+    <link id="db2query_maincss" rel="stylesheet" href="css/db2query.css">
 
-    <link id="db2JSON_maincss" rel="stylesheet" href="css/db2json.css">
-    <script id="db2JSON_sqlfmtjs"></script>
-    <script id="db2JSON_sqlhistjs"></script>
-    <script id="db2JSON_mainjs"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/simple-datatables@9.0.0/dist/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/simple-datatables@9.0.0" defer></script>
+
+    <script id="db2query_sqlfmtjs"></script>
+    <script id="db2query_sqlhistjs"></script>
+    <script id="db2query_mainjs"></script>
 </head>
 
 <body>
-    <h1>DB2JSON Query</h1>
+    <h1>Db2 Query for DB2JSON</h1>
     <form id="sqlForm" method="post" enctype="multipart/form-data" autocomplete="off" spellcheck="true">
         <div class="sql-label-row">
             <label for="sqlInput">Type SQL or select from history:</label>
@@ -128,16 +131,16 @@
         const ver = String(Date.now());
         const withV = (path) => ver ? `${path}?v=${ver}` : path;
 
-        const mainCSS = document.getElementById('db2JSON_maincss');
-        const mainjs = document.getElementById('db2JSON_mainjs');
-        const fmtJS = document.getElementById('db2JSON_sqlfmtjs');
-        const histJS = document.getElementById('db2JSON_sqlhistjs');
-        console.log(`mainjs=${withV('js/db2json.js')}`);
+        const mainCSS = document.getElementById('db2query_maincss');
+        const mainjs = document.getElementById('db2query_mainjs');
+        const fmtJS = document.getElementById('db2query_sqlfmtjs');
+        const histJS = document.getElementById('db2query_sqlhistjs');
+        console.log(`mainjs=${withV('js/db2query.js')}`);
 
-        if (mainCSS) mainCSS.href = withV('css/db2json.css');
-        if (fmtJS) fmtJS.src = withV('js/db2json_sqlFmt.js');
-        if (histJS) histJS.src = withV('js/db2json_sqlHist.js');
-        if (mainjs) mainjs.src = withV('js/db2json.js');
+        if (mainCSS) mainCSS.href = withV('css/db2query.css');
+        if (fmtJS) fmtJS.src = withV('js/db2query_sqlFmt.js');
+        if (histJS) histJS.src = withV('js/db2query_sqlHist.js');
+        if (mainjs) mainjs.src = withV('js/db2query.js');
     </script>
 </body>
 
