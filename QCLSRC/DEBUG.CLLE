@@ -1,4 +1,5 @@
  DEBUG:      PGM
              STRDBG     PGM(DB2JSON/DB2JSON) UPDPROD(*YES)
              CALL       PGM(DB2JSON/DEMO)
+             ENDDBG
  ENDPGM:     ENDPGM
