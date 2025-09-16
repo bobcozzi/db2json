@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.0.11 - 16-SEPT-2025
+- Migrated to the Db2Query scrolling HTML table to a Simple, open source DataTable. While the "subfile-style" scrolling table was awesome, this new design allows end-ousers to sort rows, jump to specific pages and search after the data is presented.
+- Fixed a bug with CCSID conversion and logging.
+- Now supports CLOB output natively
+- New "Copy current resultSet page" button to copy only the current page.
+- New Delimitor option when copying the resultSet to the clipboard [tab (default), comma (CSV), and pipe].
+- We now respect dark-mode and render the color space much better when using dark mode.
+- DB2JSON now logs fewer messages to the joblog.
+- DB2JSON now supports conversion from/to UTF-8 and UTF-16 if needed.
+- The CCSID is now displayed in the DB2QUERY result set table header when hovering along with the other column information.
+- The Datatable integration means users can now sort the resultSet table by any column. A simple click on the column name sorts in ascending or click twice to sort in descending.
+- The number of result set rows per page can be adjusted by the end-user.
+- Users may search the result set by typing into the search box that appears above the resultSet table (all columns are searched).
+- We still have some work to do on getting the resultSet table height to be closer to what would be expected.
+
 ## 0.0.10 - 15-SEPT-2025
 - We now close the SQL Cursor before freeing the statement handle. We also now use AUTOCOMMIT for users who insist on using the DB2JSON.PGM to run non-query statements, such as INSERT/UPDATE/DELETE/MERGE. Also the SQL CODE is returned with the SQLSTATE when an error is detected.
 

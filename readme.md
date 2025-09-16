@@ -142,7 +142,7 @@ For call-level interfaces this is a TYPE(*CHAR) LEN(640) parameter (in CL) or a 
 For call-level interfaces this is a TYPE(*CHAR) LEN(640) parameter (in CL) or a CHAR(640) CONST parameter in RPG IV. Note in CGI/Web This parameter does not apply. You can increase this for your shop by adjusting the value of the `MAX_PATH_LEN` variable in the `DB2JSON.CPP` source member before creating the *PGM object.
 
 3) Replace/Append option (optional) DEFAUT(*APPEND/*ADD)
-- Up to the first two characters of the paramete value are used; case-insensitive.
+- Up to the first two characters of the parameter value are used; case-insensitive.
 - If the first character is `*` or `-` then the 2nd character must contain the replace/append flag. If the first character is not `*` or `-` then the 1st character must contain the replace/append flag.
 - The replace/append flag must be:
 - For REPLACE the flag can be `r`, `t`, or `y`.

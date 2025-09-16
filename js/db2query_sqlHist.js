@@ -2,36 +2,55 @@
 // This file contains the dropdown resizing and wrapper sync logic for SQL history UI.
 
 document.addEventListener('DOMContentLoaded', () => {
-    const textarea = document.getElementById('sqlInput');
-    const wrapper = textarea && textarea.closest('.sqlInput-copy-wrapper');
-    const dropdown = document.getElementById('sqlHistoryDropdown');
+  const textarea = document.getElementById('sqlInput');
+  const wrapper = textarea && textarea.closest('.sqlInput-copy-wrapper');
+  const dropdown = document.getElementById('sqlHistoryDropdown');
 
-    // Clear any legacy inline height that may remain from prior versions
-    if (wrapper) wrapper.style.height = '';
+  // Clear any legacy inline height that may remain from prior versions
+  if (wrapper) wrapper.style.height = '';
 
-    // Keep wrapper width in sync with textarea resize (do NOT force height)
-    if (textarea && wrapper) {
-        const syncWrapperSize = () => {
-            wrapper.style.width = textarea.offsetWidth + 'px';
-            // Don't force height; wrapper must grow to contain submit row, etc.
-            // wrapper.style.height = textarea.offsetHeight + 'px';
-        };
-        syncWrapperSize();
-        const observerWrap = new ResizeObserver(syncWrapperSize);
-        observerWrap.observe(textarea);
-        window.addEventListener('resize', syncWrapperSize);
-    }
+  // Keep wrapper width in sync with textarea resize (do NOT force height)
+  if (textarea && wrapper) {
+    const syncWrapperSize = () => {
+      wrapper.style.width = textarea.offsetWidth + 'px';
+      // Don't force height; wrapper must grow to contain submit row, etc.
+      // wrapper.style.height = textarea.offsetHeight + 'px';
+    };
+    syncWrapperSize();
+    const observerWrap = new ResizeObserver(syncWrapperSize);
+    observerWrap.observe(textarea);
+    window.addEventListener('resize', syncWrapperSize);
+  }
 
-    // Keep dropdown width in sync with wrapper
-    if (wrapper && dropdown) {
-        const syncDropdownWidth = () => {
-            dropdown.style.width = wrapper.offsetWidth + 'px';
-        };
-        syncDropdownWidth();
-        const observerDropdown = new ResizeObserver(syncDropdownWidth);
-        observerDropdown.observe(wrapper);
-        window.addEventListener('resize', syncDropdownWidth);
-    }
+  // Keep dropdown width in sync with wrapper
+  if (wrapper && dropdown) {
+    const syncDropdownWidth = () => {
+      dropdown.style.width = wrapper.offsetWidth + 'px';
+    };
+    syncDropdownWidth();
+    const observerDropdown = new ResizeObserver(syncDropdownWidth);
+    observerDropdown.observe(wrapper);
+    window.addEventListener('resize', syncDropdownWidth);
+  }
+  if (dropdown && textarea) {
+    dropdown.addEventListener('change', function () {
+      const val = dropdown.value;
+      if (!val) return;
+      // Insert at cursor position
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const before = textarea.value.slice(0, start);
+      const after = textarea.value.slice(end);
+      textarea.value = before + val + after;
+      // Move cursor to after inserted text
+      textarea.selectionStart = textarea.selectionEnd = start + val.length;
+      textarea.focus();
+      // Optionally reset dropdown to default
+      dropdown.selectedIndex = 0;
+      console.log('Inserted at cursor:', val, 'at', start, '->', textarea.value);
+
+    });
+  }
 });
 
 // History constants (scoped here)
@@ -89,7 +108,7 @@ function getSqlHistory() {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) return parsed;
     if (typeof parsed === 'string') return parsed ? [parsed] : [];
-  } catch {}
+  } catch { }
   // Legacy self-heal
   let arr = [];
   try {
@@ -97,7 +116,7 @@ function getSqlHistory() {
       .map(s => s.replace(/;\s*$/, '').trim())
       .filter(Boolean);
   } catch { arr = []; }
-  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr)); } catch {}
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr)); } catch { }
   return arr;
 }
 
@@ -107,11 +126,15 @@ function saveSqlToHistory(stmt) {
   const s = stmt; // preserve original text
   const key = normalizeSqlKey(s);
   let history = getSqlHistory();
-  const exists = history.some(h => normalizeSqlKey(h) === key);
-  if (exists) return; // already present → skip
+
+  // Remove any existing entry with the same normalized key
+  history = history.filter(h => normalizeSqlKey(h) !== key);
+
+  // Insert the new statement at the top
   history.unshift(s);
+
   if (history.length > MAX_SQL_HISTORY) history = history.slice(0, MAX_SQL_HISTORY);
-  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch {}
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch { }
 }
 
 function populateSqlHistoryDropdown() {
@@ -143,11 +166,13 @@ function populateSqlHistoryDropdown() {
   const widthPx = dropdown.offsetWidth || 400;
   maxChars = Math.max(20, Math.min(400, Math.floor(widthPx / avgChar)));
 
-  for (const stmt of history) {
+  for (let idx = 0; idx < history.length; idx++) {
+    const stmt = history[idx];
     const opt = document.createElement('option');
     opt.value = stmt;
     const label = (stmt || '').replace(/\s+/g, ' ').trim();
     opt.textContent = label.length > maxChars ? label.slice(0, maxChars - 3) + '...' : label;
+    if (idx === 0) opt.classList.add('last-stmt'); // highlight first
     dropdown.appendChild(opt);
   }
 
@@ -161,6 +186,25 @@ function populateSqlHistoryDropdown() {
       window.addEventListener('resize', populateSqlHistoryDropdown);
       dropdown._windowResizeHandlerAttached = true;
     }
+  }
+  // Attach the event listener here
+  if (dropdown && !dropdown._cursorInsertWired) {
+    dropdown.addEventListener('change', function () {
+      const textarea = document.getElementById('sqlInput');
+      if (!textarea) return;
+      const val = dropdown.value;
+      if (!val) return;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const before = textarea.value.slice(0, start);
+      const after = textarea.value.slice(end);
+      textarea.value = before + val + after;
+      textarea.selectionStart = textarea.selectionEnd = start + val.length;
+      textarea.focus();
+      dropdown.selectedIndex = 0;
+      console.log('Inserted at cursor:', val, 'at', start, '->', textarea.value);
+    });
+    dropdown._cursorInsertWired = true;
   }
 }
 
@@ -202,7 +246,7 @@ function saveEditedHistory() {
     .map(s => s.replace(/;\s*$/, '').trim())
     .filter(Boolean);
   if (blocks.length > MAX_SQL_HISTORY) blocks = blocks.slice(0, MAX_SQL_HISTORY);
-  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(blocks)); } catch {}
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(blocks)); } catch { }
   closeEditHistoryModal();
   populateSqlHistoryDropdown();
 }
@@ -224,8 +268,8 @@ function dedupeSqlHistoryCaseInsensitive() {
   }
 
   if (removed > 0) {
-    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(out)); } catch {}
-    try { populateSqlHistoryDropdown(); } catch {}
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(out)); } catch { }
+    try { populateSqlHistoryDropdown(); } catch { }
   }
   return { removed, total: out.length };
 }
