@@ -437,6 +437,61 @@ async function handleSqlSubmit(e) {
   }
 }
 
+// Helper: snap to allowed per-page values
+function snapPerPage(n, maxRows) {
+  const allowed = [5, 10, 15, 20, 25, 50, 100, 200, 500];
+  let v = Math.max(1, Math.floor(n));
+  // snap down to nearest multiple of 5
+  v = Math.max(1, v - (v % 5));
+  if (v < 5) v = 5;
+  if (maxRows && v > maxRows) v = maxRows;
+  // if not in allowed, add it so it appears in the dropdown
+  const perPageSelect = allowed.includes(v) ? allowed : [...allowed, v].sort((a, b) => a - b);
+  return { v, perPageSelect };
+}
+
+function setWrapperHeight(wrapper, gapPx = 12) {
+  const viewportH = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+  const top = wrapper.getBoundingClientRect().top;
+  let avail = Math.floor(viewportH - top - gapPx);
+
+  // Subtract vertical padding + borders so content fits precisely
+  const cs = getComputedStyle(wrapper);
+  const padTop = parseFloat(cs.paddingTop) || 0;
+  const padBot = parseFloat(cs.paddingBottom) || 0;
+  const borTop = parseFloat(cs.borderTopWidth) || 0;
+  const borBot = parseFloat(cs.borderBottomWidth) || 0;
+  const chrome = padTop + padBot + borTop + borBot;
+
+  avail = Math.max(100, avail - chrome);
+  wrapper.style.height = avail + 'px';
+  wrapper.style.maxHeight = avail + 'px';
+  return avail;
+}
+
+function measureHeights(wrapper, tableEl) {
+  // Must be called after DataTable init to include top/bottom bars
+  const topBar = wrapper.querySelector('.datatable-top') || wrapper.querySelector('.dataTable-top');
+  const bottomBar = wrapper.querySelector('.datatable-bottom') || wrapper.querySelector('.dataTable-bottom');
+  const thead = tableEl.tHead;
+  const firstRow = tableEl.querySelector('tbody tr');
+
+  const topH = topBar ? Math.ceil(topBar.getBoundingClientRect().height) : 0;
+  const botH = bottomBar ? Math.ceil(bottomBar.getBoundingClientRect().height) : 0;
+  const headH = thead ? Math.ceil(thead.getBoundingClientRect().height) : 0;
+  const rowH = firstRow ? Math.max(20, Math.ceil(firstRow.getBoundingClientRect().height)) : 24;
+
+  return { topH, botH, headH, rowH };
+}
+
+function debounced(ms, fn) {
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), ms);
+  };
+}
+
 function renderTable(json, resultsDiv) {
   let columns = [], rows = [], tblname = '', libname = '', colMeta = null;
   const copyBtnRow = document.getElementById('copyBtnRow');
@@ -463,7 +518,8 @@ function renderTable(json, resultsDiv) {
   }
   if (copyBtnRow) copyBtnRow.classList.remove('is-hidden');
 
-  let html = '<table class="scroll-table"><colgroup></colgroup><thead><tr>';
+  // Build HTML with a fixed ID
+  let html = '<table id="resultSetTable" class="scroll-table"><colgroup></colgroup><thead><tr>';
 
   const isRightAlignType = t => /^(DECIMAL|DEC|NUMERIC|DECFLOAT|ZONED|INT|INTEGER|SMALLINT|BIGINT|TINYINT|FLOAT|REAL|DOUBLE|DATE|TIME|TIMESTAMP)$/i.test(t);
 
@@ -523,93 +579,86 @@ function renderTable(json, resultsDiv) {
 
   html += '</table>';
 
-  // Inject the table
-  resultsDiv.innerHTML = html;
+  // Inject into an existing wrapper (preserve wrapper DOM)
+  const wrapper = resultsDiv.querySelector('.scroll-table-wrapper') || (() => {
+    const d = document.createElement('div');
+    d.className = 'scroll-table-wrapper';
+    resultsDiv.innerHTML = '';
+    resultsDiv.appendChild(d);
+    return d;
+  })();
+  wrapper.innerHTML = html;
 
-    // Save a reference to the data
-  window._lastRenderedColumns = columns;
-  window._lastRenderedRows = rows;
+  // 1) Cap wrapper height from its current top to viewport bottom
+  const avail = setWrapperHeight(wrapper, 12);
 
+  const tableEl = wrapper.querySelector('#resultSetTable');
 
-  // Column widths before DataTables modifies the DOM
-  try { syncColWidths(resultsDiv); } catch { }
+  // Clean up previous instance
+  if (resultsDiv._dt) {
+    try { resultsDiv._dt.destroy(); } catch { }
+    resultsDiv._dt = null;
+  }
 
-  try {
-    // Destroy prior instance if any
-    if (resultsDiv._dt) { resultsDiv._dt.destroy(); resultsDiv._dt = null; }
+  // 2) Compute perPage BEFORE initializing DataTable (no inner scroll)
+  let perPage = 25;
+  let perPageSelect = [5, 10, 15, 20, 25, 50, 100, 200, 500];
+  if (tableEl) {
+    // Force a layout so sizes are accurate
+    void tableEl.offsetHeight;
 
-    const tableEl = resultsDiv.querySelector('table');
+    const theadH = tableEl.tHead ? Math.ceil(tableEl.tHead.getBoundingClientRect().height || 0) : 0;
+    const firstRow = tableEl.querySelector('tbody tr');
+    const rowH = firstRow ? Math.max(20, Math.ceil(firstRow.getBoundingClientRect().height || 24)) : 24;
 
-    // 2. Set the font size based on data volume (do this BEFORE measuring row height)
-    if (tableEl) {
-      // Example: shrink font for large tables
-      let fontSize = '1em';
-      if (rows.length > 1000) fontSize = '0.85em';
-      else if (rows.length > 200) fontSize = '0.92em';
-      tableEl.style.setProperty('--table-font-size', fontSize);
+    // Reserve space for Simple-DataTables top and bottom bars
+    const controlsReserve = 84; // tweak if needed (top ~40 + bottom ~44)
+
+    const bodyAvail = Math.max(0, avail - theadH - controlsReserve);
+    const totalRows = rows.length;
+
+    const estRows = Math.max(1, Math.floor(bodyAvail / rowH));
+    const snap = (n, max) => {
+      let v = Math.max(1, Math.floor(n));
+      v = v - (v % 5); if (v < 5) v = 5;
+      if (max && v > max) v = max;
+      if (!perPageSelect.includes(v)) perPageSelect = [...perPageSelect, v].sort((a, b) => a - b);
+      return v;
+    };
+    perPage = snap(estRows, totalRows);
+  }
+
+  // 3) Initialize Simple-DataTables ONCE with the computed perPage
+  if (tableEl && window.simpleDatatables?.DataTable) {
+    resultsDiv._dt = new simpleDatatables.DataTable(tableEl, {
+      searchable: true,
+      perPage,
+      perPageSelect
+    });
+
+    // Precisely fit perPage once bars exist
+    requestAnimationFrame(() => {
+      try { adjustPerPageToFit(resultsDiv, wrapper, tableEl); } catch { }
+    });
+
+    // Recompute on browser resize; avoid multiple handlers
+    if (resultsDiv._dtResizeHandler) {
+      window.removeEventListener('resize', resultsDiv._dtResizeHandler);
+      if (window.visualViewport) window.visualViewport.removeEventListener('resize', resultsDiv._dtResizeHandler);
     }
+    resultsDiv._dtResizeHandler = debounced(150, () => {
+      try { adjustPerPageToFit(resultsDiv, wrapper, tableEl); } catch { }
+    });
+    window.addEventListener('resize', resultsDiv._dtResizeHandler, { passive: true });
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', resultsDiv._dtResizeHandler, { passive: true });
+  }
 
-    // 3. Now measure row height and calculate perPage
-    const allowed = [5, 10, 15, 20, 25, 50, 100, 200, 500];
-    let perPage = 25; // fallback
+  setResultsMeta({ rowsCount: rows.length, colsCount: columns.length, tblname, libname });
+  document.getElementById('copyBtnRow')?.classList.remove('is-hidden');
+  document.getElementById('resultsMeta')?.classList.remove('is-hidden');
 
-    try {
-      const metaBar = document.getElementById('resultsMeta');
-      const copyBtnTable = document.getElementById('copyBtnTable');
-      const metaRect = metaBar?.getBoundingClientRect();
-      const copyRect = copyBtnTable?.getBoundingClientRect();
-      const top = Math.max(metaRect ? metaRect.bottom : 0, copyRect ? copyRect.bottom : 0);
-
-      const controlsH = 90; // adjust as needed
-      const GAP_PX = 24;
-      const avail = Math.max(0, window.innerHeight - top - GAP_PX - controlsH);
-
-      // Wait for font size to apply
-      const firstRow = tableEl?.querySelector('tbody tr');
-      let rowH = 24;
-      if (firstRow) {
-        // Force a reflow to ensure font size is applied
-        void firstRow.offsetHeight;
-        rowH = Math.max(20, firstRow.getBoundingClientRect().height || 24);
-      }
-
-      let fitRows = Math.floor(avail / rowH);
-      let closest = allowed.find(v => v >= fitRows) || allowed[allowed.length - 1];
-      if (rows.length && rows.length < closest) closest = rows.length;
-      perPage = allowed.includes(closest) ? closest : allowed[0];
-    } catch { }
-
-    if (tableEl && window.simpleDatatables?.DataTable) {
-      resultsDiv._dt = new simpleDatatables.DataTable(tableEl, {
-        searchable: true,
-        perPage
-      });
-
-      // Patch the dropdown to match perPage
-      const perPageSelect = resultsDiv.querySelector('.dataTable-selector');
-      if (perPageSelect) {
-        perPageSelect.value = perPage;
-        Array.from(perPageSelect.options).forEach(opt => {
-          opt.selected = Number(opt.value) === perPage;
-        });
-      }
-    }
-
-    const perPageSelect = resultsDiv.querySelector('.dataTable-selector');
-    if (perPageSelect) {
-      perPageSelect.value = perPage;
-      Array.from(perPageSelect.options).forEach(opt => {
-        opt.selected = Number(opt.value) === perPage;
-      });
-    }
-
-    setResultsMeta({ rowsCount: rows.length, colsCount: columns.length, tblname, libname });
-    document.getElementById('copyBtnRow')?.classList.remove('is-hidden');
-    document.getElementById('resultsMeta')?.classList.remove('is-hidden');
-  } catch { }
-
-  // Debug (optional)
-  // console.debug('Generated table HTML:', html);
+  // Keep wrapper height correct after paint
+  requestAnimationFrame(() => { try { sizeResultsViewport(); } catch { } });
 }
 
 function copyTableToClipboard(resultsDiv) {
@@ -1183,14 +1232,34 @@ function sizeResultsViewport() {
 }
 
 (function initResultsViewportSizing() {
-  const run = () => { try { sizeResultsViewport(); } catch { } };
+  // Replace the old `run` with this combined version
+  const run = () => {
+    try {
+      // 1) Cap wrapper to viewport remainder
+      sizeResultsViewport();
+
+      // 2) Also recompute perPage to fit between the bars
+      const resultsDiv = document.getElementById('results');
+      const wrapper = resultsDiv?.querySelector('.scroll-table-wrapper');
+      const tableEl = wrapper?.querySelector('#resultSetTable');
+      if (resultsDiv && wrapper && tableEl) {
+        // Debounce to avoid thrashing while dragging the textarea resizer
+        if (!window._db2jsonAdjustDebounced) {
+          window._db2jsonAdjustDebounced = debounced(100, () => {
+            try { adjustPerPageToFit(resultsDiv, wrapper, tableEl); } catch { }
+          });
+        }
+        window._db2jsonAdjustDebounced();
+      }
+    } catch { }
+  };
 
   // Recompute when window/viewport changes
   window.addEventListener('resize', run);
   window.addEventListener('orientationchange', run);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', run);
 
-  // Recompute when the SQL input area changes size (desktop resize handle or CSS)
+  // Recompute when the SQL input area changes size
   const ta = document.getElementById('sqlInput');
   if (ta && 'ResizeObserver' in window) {
     const ro = new ResizeObserver(run);
@@ -1206,7 +1275,6 @@ function sizeResultsViewport() {
       return r;
     };
   } else {
-    // Fallback: try once after DOM ready
     if (document.readyState !== 'loading') run();
     else document.addEventListener('DOMContentLoaded', run);
   }
@@ -1221,5 +1289,46 @@ function setResultsMeta({ rowsCount, colsCount, tblname, libname }) {
   // Use escapeHTML if already defined in your file
   meta.innerHTML = `<b>${typeof escapeHTML === 'function' ? escapeHTML(txt) : txt}</b>`;
   meta.title = txt;
+}
+
+function adjustPerPageToFit(resultsDiv, wrapper, tableEl) {
+  const dt = resultsDiv?._dt;
+  if (!dt || !wrapper || !tableEl) return;
+
+  const avail = setWrapperHeight(wrapper, 12);
+
+  const { topH, botH, headH, rowH } = measureHeights(wrapper, tableEl);
+  const fudge = 2; // avoid off-by-one pushing bottom bar out of view
+  const bodyAvail = Math.max(0, avail - topH - botH - headH - fudge);
+  const totalRows = tableEl.tBodies[0]?.rows?.length || 0;
+
+  const rowsThatFit = Math.max(1, Math.floor(bodyAvail / Math.max(1, rowH)));
+  const { v: perPage, perPageSelect } = snapPerPage(rowsThatFit, totalRows);
+
+  if (perPage === dt.options.perPage) return;
+
+  dt.options.perPage = perPage;
+  if (Array.isArray(perPageSelect)) dt.options.perPageSelect = perPageSelect;
+  if (typeof dt.setPage === 'function') dt.setPage(1);
+  if (typeof dt.update === 'function') dt.update();
+
+  const perPageSelectEl =
+    wrapper.querySelector('.datatable-dropdown select') ||
+    wrapper.querySelector('.dataTable-dropdown select');
+  if (perPageSelectEl) {
+    const has = Array.from(perPageSelectEl.options).some(o => Number(o.value) === perPage);
+    if (!has) {
+      const opt = document.createElement('option');
+      opt.value = String(perPage);
+      opt.textContent = String(perPage);
+      perPageSelectEl.appendChild(opt);
+      const opts = Array.from(perPageSelectEl.options)
+        .sort((a, b) => Number(a.value) - Number(b.value));
+      perPageSelectEl.innerHTML = '';
+      opts.forEach(o => perPageSelectEl.appendChild(o));
+    }
+    perPageSelectEl.value = String(perPage);
+    perPageSelectEl.dispatchEvent(new Event('change', { bubbles: true }));
+  }
 }
 

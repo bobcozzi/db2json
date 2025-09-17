@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.0.12 - 18-SEPT-2025
+- SQL History insertion UX:
+  - Insert selected history item after the current statement (uses getSQLStmtAtCursor).
+  - Auto-insert required separator (“;” and/or newline) when needed; caret lands after inserted text.
+  - Keeps existing de-dup and “move selected to top” behaviors.
+- DataTable viewport-fitting and paging:
+  - Table now renders inside a persistent .scroll-table-wrapper with height capped to the viewport (from wrapper top to window bottom), accounting for padding/borders with a small safety fudge.
+  - perPage is computed to fit the visible area but isn't always accurate.
+  - Recalculates on browser resize and on SQL editor resize via ResizeObserver; pager bars remain visible. If the viewport can’t fit 5 rows, the body scrolls between the bars.
+  - Assigned id="resultSetTable" to the table.
+- CSS adjustments for Simple-DataTables:
+  - Use .datatable-* selectors; ensure .datatable-top/.datatable-bottom are position: static.
+  - .scroll-table-wrapper simplified (display: block; width: 100%; overflow-y: auto); removed conflicting inline-block/max-content/40vh rules.
+- DB2JSON.PGM Changes to joblog messages
+  - The REMOTE_USER environment variable (if any) is now logged.
+  - Many redundant or debug-related joblog messages have been cleaned up or commented out.
+  - Database CLOB fields are not output normally, just like CHAR and VARCHAR fields.
+  - New CL Command Defintion DB2JSON created in DB2JSON/QCMDSRC(DB2JSON) so users can now run DB2JSON using a CL command and output to the IFS.
+  - Input parameters when using Command Entry have been switched to VARCHAR style instead of fixed-block variables since the CL command is now available to use.
+  - All Demo / Debug and Build CL source code has been updated to support the new DB2JSON command.
+  - The CCSID of the column in the resultSet is now extracted and saved in the field attributes JSON node.
+
 ## 0.0.11 - 16-SEPT-2025
 - Migrated to the Db2Query scrolling HTML table to a Simple, open source DataTable. While the "subfile-style" scrolling table was awesome, this new design allows end-ousers to sort rows, jump to specific pages and search after the data is presented.
 - Fixed a bug with CCSID conversion and logging.
@@ -13,7 +35,7 @@
 - The Datatable integration means users can now sort the resultSet table by any column. A simple click on the column name sorts in ascending or click twice to sort in descending.
 - The number of result set rows per page can be adjusted by the end-user.
 - Users may search the result set by typing into the search box that appears above the resultSet table (all columns are searched).
-- We still have some work to do on getting the resultSet table height to be closer to what would be expected.
+- We still have some work to do on getting the resultSet table's initial height to be what would be expected.
 
 ## 0.0.10 - 15-SEPT-2025
 - We now close the SQL Cursor before freeing the statement handle. We also now use AUTOCOMMIT for users who insist on using the DB2JSON.PGM to run non-query statements, such as INSERT/UPDATE/DELETE/MERGE. Also the SQL CODE is returned with the SQLSTATE when an error is detected.

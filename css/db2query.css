@@ -1,4 +1,3 @@
-
 :root {
   --radius: 14px;
   --pad: 12px;
@@ -77,9 +76,49 @@ body {
 }
 
 .scroll-table-wrapper {
-  max-height: calc(100vh - 12em);
-  overflow: auto;
+  display: block;
   width: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: var(--results-bg, #fff);
+}
+
+/* Remove conflicting wrapper block (was inline-block, max-content, 40vh, etc.) */
+/* DELETE or comment out this entire block if present:
+.results-area #results .scroll-table-wrapper {
+  display: inline-block;
+  width: max-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  height: 40vh;
+  min-height: 160px;
+  max-height: calc(100dvh - var(--results-offset));
+  overflow: auto;
+  resize: vertical;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+}
+#results .scroll-table-wrapper { max-height: none; }
+*/
+
+/* Simple-DataTables inside our scroll wrapper */
+/* Use v9 lowercase class names */
+#results .scroll-table-wrapper .datatable-container {
+  overflow: visible !important;
+  max-height: none !important;
+  padding-bottom: 44px; /* avoid rows under pager */
+}
+
+/* Keep top/bottom bars participating in flow (not absolute) */
+#results .scroll-table-wrapper .datatable-bottom,
+#results .scroll-table-wrapper .datatable-top {
+  position: static !important;
+  background: none !important;
+  z-index: auto !important;
 }
 
 th {
@@ -708,7 +747,19 @@ td {
   /* inner wrapper scrolls */
 }
 
-/* Make the scroll viewport itself resizable and frame the table width */
+/* Wrapper: this is the scroller */
+.scroll-table-wrapper {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: var(--results-bg, #fff);
+}
+
+/* Remove conflicting wrapper block (was inline-block, max-content, 40vh, etc.) */
+/* DELETE or comment out this entire block if present:
 .results-area #results .scroll-table-wrapper {
   display: inline-block;
   width: max-content;
@@ -716,105 +767,33 @@ td {
   box-sizing: border-box;
   height: 40vh;
   min-height: 160px;
-  /* Let it grow close to the bottom of the viewport, minus UI above */
   max-height: calc(100dvh - var(--results-offset));
   overflow: auto;
   resize: vertical;
   -webkit-overflow-scrolling: touch;
-
   border: 1px solid #ddd;
   border-radius: 6px;
   background: #fff;
 }
+#results .scroll-table-wrapper { max-height: none; }
+*/
 
-/* Hide the frame until results are actually rendered */
-.results-area #results .scroll-table-wrapper:empty {
-  display: none;
+/* Simple-DataTables inside our scroll wrapper */
+/* Use v9 lowercase class names */
+#results .scroll-table-wrapper .datatable-container {
+  overflow: visible !important;
+  max-height: none !important;
+  padding-bottom: 44px; /* avoid rows under pager */
 }
 
-/* Remove prior global cap so growth isn’t limited */
-#results .scroll-table-wrapper {
-  max-height: none;
-  /* allow rule above to control it */
+/* Keep top/bottom bars participating in flow (not absolute) */
+#results .scroll-table-wrapper .datatable-bottom,
+#results .scroll-table-wrapper .datatable-top {
+  position: static !important;
+  background: none !important;
+  z-index: auto !important;
 }
 
-/* Footer info bar that does not scroll with the table */
-.results-area #results .results-footer {
-  display: inline-block;
-  /* hug table width like the wrapper */
-  max-width: 100%;
-  margin-top: 6px;
-  padding: 6px 10px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: #fff;
-  font-size: 0.95em;
-  /* If the text gets long, allow horizontal scroll just for the footer text line */
-  white-space: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-/* Mobile/touch: reduce initial SQL input height by ~50% */
-@media (hover: none) and (pointer: coarse) {
-  #sqlInput {
-    height: 15vh !important;
-    /* was 30vh */
-    max-height: 40vh;
-    /* safety cap */
-  }
-}
-
-/* iOS/iPadOS: a touch smaller */
-@supports (-webkit-touch-callout: none) {
-  @media (hover: none) and (pointer: coarse) {
-    #sqlInput {
-      height: 14vh !important;
-    }
-  }
-}
-
-.sql-label-row {
-  margin-bottom: 6px;
-  /* add space below the label + Run SQL row */
-}
-
-.button_Align_Left {
-  text-align: left;
-}
-
-.button_Align_Right {
-  text-align: right;
-}
-
-@media (max-width: 520px) {
-  .modal .modal-actions {
-    flex-wrap: wrap;
-  }
-
-  #historyDedupeBtn {
-    flex: 0 0 auto;
-  }
-}
-
-/* Modal actions: left group on the left, save/cancel on the right */
-.modal .modal-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  /* split left/right groups */
-  gap: 8px;
-  width: 100%;
-}
-
-.modal .modal-actions .button_Align_Left,
-.modal .modal-actions .button_Align_Right {
-  display: flex;
-  /* keep buttons in each group on one line */
-  gap: 8px;
-}
-
-/* Simple-DataTables inside our scroll wrapper: our wrapper scrolls, not the plugin */
 #results .scroll-table-wrapper .dataTable-container {
   overflow: visible !important;
   max-height: none !important;
@@ -843,12 +822,13 @@ td {
   text-overflow: ellipsis;
 }
 
+/*
 #results table.scroll-table {
   display: block;
   max-height: calc(100vh - 180px);
-  /* adjust 180px as needed */
   overflow-y: auto;
 }
+*/
 
 .visually-hidden {
   position: absolute !important;

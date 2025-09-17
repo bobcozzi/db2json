@@ -1,6 +1,59 @@
 // sqlHistoryUI.js
 // This file contains the dropdown resizing and wrapper sync logic for SQL history UI.
 
+// Helper: insert a history statement after the current SQL statement,
+// ensuring a terminating semicolon and newline if needed.
+function insertHistoryStatement(stmt) {
+  const textarea = document.getElementById('sqlInput');
+  if (!textarea) return;
+  const input = textarea.value || '';
+  const cursor = (typeof textarea.selectionEnd === 'number') ? textarea.selectionEnd : input.length;
+
+  // Use app’s smarter parser if available
+  let start = cursor, end = cursor;
+  if (typeof window.getSQLStmtAtCursor === 'function') {
+    try {
+      const res = window.getSQLStmtAtCursor(input, cursor);
+      start = res?.start ?? cursor;
+      end   = res?.end   ?? cursor;
+    } catch {}
+  } else {
+    // Fallback: go to next semicolon or end of text
+    const nextSemi = input.indexOf(';', cursor);
+    end = (nextSemi >= 0) ? nextSemi + 1 : input.length;
+  }
+
+  let insertPos = end;
+
+  // Determine if we need a separator before inserting:
+  // - If there is any non-whitespace before insertPos and the last non-ws char
+  //   is not ';', add ';\n'
+  // - If the last non-ws is ';', ensure at least one newline.
+  let i = insertPos - 1;
+  while (i >= 0 && /\s/.test(input[i])) i--;
+  const hasExistingContent = i >= 0 && input.slice(0, insertPos).trim().length > 0;
+
+  let sep = '';
+  if (hasExistingContent) {
+    if (input[i] === ';') {
+      const trailing = input.slice(i + 1, insertPos);
+      if (!/\n/.test(trailing)) sep = '\n';
+    } else {
+      sep = ';\n';
+    }
+  }
+
+  const before = input.slice(0, insertPos);
+  const after  = input.slice(insertPos);
+  const textToInsert = sep + stmt;
+
+  textarea.value = before + textToInsert + after;
+
+  const caret = (before + textToInsert).length;
+  textarea.setSelectionRange(caret, caret);
+  textarea.focus();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const textarea = document.getElementById('sqlInput');
   const wrapper = textarea && textarea.closest('.sqlInput-copy-wrapper');
@@ -32,24 +85,16 @@ document.addEventListener('DOMContentLoaded', () => {
     observerDropdown.observe(wrapper);
     window.addEventListener('resize', syncDropdownWidth);
   }
-  if (dropdown && textarea) {
+
+  // Use the smarter insertion logic; guard against double-wiring
+  if (dropdown && textarea && !dropdown._cursorInsertWired) {
     dropdown.addEventListener('change', function () {
       const val = dropdown.value;
       if (!val) return;
-      // Insert at cursor position
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const before = textarea.value.slice(0, start);
-      const after = textarea.value.slice(end);
-      textarea.value = before + val + after;
-      // Move cursor to after inserted text
-      textarea.selectionStart = textarea.selectionEnd = start + val.length;
-      textarea.focus();
-      // Optionally reset dropdown to default
+      insertHistoryStatement(val);
       dropdown.selectedIndex = 0;
-      console.log('Inserted at cursor:', val, 'at', start, '->', textarea.value);
-
     });
+    dropdown._cursorInsertWired = true;
   }
 });
 
@@ -176,6 +221,19 @@ function populateSqlHistoryDropdown() {
     dropdown.appendChild(opt);
   }
 
+  // Attach one-time change listener if not already attached
+  if (dropdown && !dropdown._cursorInsertWired) {
+    dropdown.addEventListener('change', function () {
+      const textarea = document.getElementById('sqlInput');
+      if (!textarea) return;
+      const val = dropdown.value;
+      if (!val) return;
+      insertHistoryStatement(val);
+      dropdown.selectedIndex = 0;
+    });
+    dropdown._cursorInsertWired = true;
+  }
+
   // Attach one-time resize observer to keep labels fitting
   if (!dropdown._resizeObserverAttached) {
     if (window.ResizeObserver) {
@@ -186,25 +244,6 @@ function populateSqlHistoryDropdown() {
       window.addEventListener('resize', populateSqlHistoryDropdown);
       dropdown._windowResizeHandlerAttached = true;
     }
-  }
-  // Attach the event listener here
-  if (dropdown && !dropdown._cursorInsertWired) {
-    dropdown.addEventListener('change', function () {
-      const textarea = document.getElementById('sqlInput');
-      if (!textarea) return;
-      const val = dropdown.value;
-      if (!val) return;
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const before = textarea.value.slice(0, start);
-      const after = textarea.value.slice(end);
-      textarea.value = before + val + after;
-      textarea.selectionStart = textarea.selectionEnd = start + val.length;
-      textarea.focus();
-      dropdown.selectedIndex = 0;
-      console.log('Inserted at cursor:', val, 'at', start, '->', textarea.value);
-    });
-    dropdown._cursorInsertWired = true;
   }
 }
 
