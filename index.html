@@ -4,16 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bob Cozzi's Db2JSON Test Composer using SQL</title>
+    <title>Db2 Query: Bob Cozzi's Db2JSON Example HTML App</title>
 
-    <link id="db2JSON_maincss" rel="stylesheet" href="css/db2json.css">
-    <script id="db2JSON_sqlfmtjs"></script>
-    <script id="db2JSON_sqlhistjs"></script>
-    <script id="db2JSON_mainjs"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/simple-datatables@9.0.0/dist/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/simple-datatables@9.0.0" defer></script>
 </head>
 
 <body>
-    <h1>DB2JSON Query</h1>
+    <h1>Db2 Query for DB2JSON</h1>
     <form id="sqlForm" method="post" enctype="multipart/form-data" autocomplete="off" spellcheck="true">
         <div class="sql-label-row">
             <label for="sqlInput">Type SQL or select from history:</label>
@@ -73,9 +71,19 @@
     <input id="sqlFileInput" type="file" accept=".sql,.txt" hidden />
 
     <div class="results-area">
-        <div class="copy-table-btn-row">
+        <div id="copyBtnRow" class="copy-table-btn-row is-hidden">
             <div id="resultsMeta" class="results-meta"></div>
-            <button id="copyTableBtn" type="button" class="copy-table-btn is-hidden">Copy results</button>
+            <button id="copyBtnTable" type="button" class="copy-table-btn" title="Copy entire table to clipboard">Copy
+                Table</button>
+            <button id="copyBtnPage" type="button" class="copy-table-btn" title="Copy current page to clipboard">Copy
+                Page</button>
+            <label for="copyBtnOption" class="visually-hidden">Format</label>
+            <select id="copyBtnOption" name="copyStyle" class="copy-table-btn" title="Copy format">
+                <option value="tab">Tab</option>
+                <option value="comma">Comma (CSV)</option>
+                <option value="pipe">Pipe |</option>
+            </select>
+
         </div>
         <div id="error" role="status" aria-live="polite"></div>
         <div id="results">
@@ -104,7 +112,9 @@
 
             <div class="modal-actions">
                 <span class="button_Align_Left">
-                    <button id="historyDedupeBtn" type="button" title="Immediately removes duplicate SQL statements from browser history (case-insensitive)">Remove Duplicates</button>
+                    <button id="historyDedupeBtn" type="button"
+                        title="Immediately removes duplicate SQL statements from browser history (case-insensitive)">Remove
+                        Duplicates</button>
                 </span>
                 <span class="button_Align_Right">
                     <button id="historyCancelBtn" type="button">Cancel</button>
@@ -127,17 +137,27 @@
         // const ver = isDev ? String(Date.now()) : null;
         const ver = String(Date.now());
         const withV = (path) => ver ? `${path}?v=${ver}` : path;
+        // Dynamically load CSS after the DataTables CSS
+        function loadCss(href) {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = href;
+            document.head.appendChild(link);
+        }
+        loadCss(withV('css/db2query.css'));
 
-        const mainCSS = document.getElementById('db2JSON_maincss');
-        const mainjs = document.getElementById('db2JSON_mainjs');
-        const fmtJS = document.getElementById('db2JSON_sqlfmtjs');
-        const histJS = document.getElementById('db2JSON_sqlhistjs');
-        console.log(`mainjs=${withV('js/db2json.js')}`);
+        function loadScript(src, cb) {
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = cb;
+            document.body.appendChild(s);
+        }
 
-        if (mainCSS) mainCSS.href = withV('css/db2json.css');
-        if (fmtJS) fmtJS.src = withV('js/db2json_sqlFmt.js');
-        if (histJS) histJS.src = withV('js/db2json_sqlHist.js');
-        if (mainjs) mainjs.src = withV('js/db2json.js');
+        loadScript(withV('js/db2query_sqlFmt.js'), () => {
+            loadScript(withV('js/db2query_sqlHist.js'), () => {
+                loadScript(withV('js/db2query.js'));
+            });
+        });
     </script>
 </body>
 

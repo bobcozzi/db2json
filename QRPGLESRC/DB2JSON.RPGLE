@@ -3,9 +3,9 @@
       // Delete or comment-out everything passed the // EXAMPLE line
 
          dcl-pr db2json extpgm('DB2JSON/DB2JSON');
-            sqlStmt char(640) Const;
-            ifs_OutFile char(640) Const;
-            replace  char(16) Const OPTIONS(*NOPASS);
+            sqlStmt varchar(640) Const;
+            ifs_OutFile varchar(640) Const;
+            replace  char(10) Const OPTIONS(*NOPASS);
          end-pr;
 
       // EXAMPLE:

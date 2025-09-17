@@ -23,7 +23,7 @@
 
 #include <db2json/h/xlate>
 
-#define min(a, b) (a > b) ? b : a
+using namespace std;
 
 // Helper macro to set struct's to hex zeros
 #define clearStruct(s) memset((char *)&s, 0x00, sizeof(s))
@@ -76,6 +76,8 @@ int CXLate::openIBM(int fromCCSID, int toCCSID)
    clearStruct(QtoCode);
 
    memset(&cd, 0x00, sizeof(cd));
+   // Qp0zLprintf("[db2json::iconv_open] From %d  To %d\n", fromCCSID, toCCSID);
+
    if (bUseIBM == '1')
    {
       memset(&QfromCode, 0x00, sizeof(QfromCode));
@@ -83,12 +85,10 @@ int CXLate::openIBM(int fromCCSID, int toCCSID)
 
       memset(&QtoCode, 0x00, sizeof(QtoCode));
       QtoCode.CCSID = toCCSID;
-
       cd = QtqIconvOpen(&QtoCode, &QfromCode);
    }
    else
    {
-
       memset(&fromCode, '\0', sizeof(fromCvtCode));
       memset(&toCode, '\0', sizeof(toCvtCode));
       memcpy(&fromCode.IBMCCSID, "IBMCCSID", sizeof(fromCode.IBMCCSID));
@@ -102,15 +102,15 @@ int CXLate::openIBM(int fromCCSID, int toCCSID)
       memcpy(&toCode.IBMCCSID, "IBMCCSID", sizeof(toCode.IBMCCSID));
       memcpy(&toCode.CCSID, "00000", sizeof(toCode.CCSID));
 
-      Qp0zLprintf(CCSID, "%05d", fromCCSID);
+      sprintf(CCSID, "%05d", fromCCSID);
       memcpy(&fromCode.CCSID, CCSID, sizeof(fromCode.CCSID));
-      Qp0zLprintf(CCSID, "%05d", toCCSID);
+      sprintf(CCSID, "%05d", toCCSID);
       memcpy(&toCode.CCSID, CCSID, sizeof(toCode.CCSID));
 
       cd = iconv_open((const char *)&toCode, (const char *)&fromCode);
       if (cd.return_value == -1)
       {
-         Qp0zLprintf(strerror(errno));
+         Qp0zLprintf("iconv_open returned %d - %s\n",errno,strerror(errno));
          return -1;
       }
    }
@@ -129,7 +129,7 @@ void CXLate::close()
 }
 
 size_t CXLate::convert(const char *pInBuffer, size_t iLen,
-                    char *pOutBuffer, size_t oLen)
+                             char *pOutBuffer, size_t oLen)
 {
    size_t nLen = 0;
    //   char* inp;
@@ -153,12 +153,17 @@ size_t CXLate::convert(const char *pInBuffer, size_t iLen,
       outLen = oLen;
       nRtnBytes = iconv(cd, &inp, &inLen, &out, &outLen);
 
+            // size_t is an "unsigned int"
+            // So in order to confirm that we got an error,
+            // I cast it to an (int) and check for -1.
       if ((int)nRtnBytes == -1)
       {
-         Qp0zLprintf("iconv input len(%d) returned %d - %s\n",iLen,errno,strerror(errno));
+         Qp0zLprintf("iconv input len(%d) returned %d - %s \n  Input: '%.*s'\n",
+               (int)iLen, errno, strerror(errno),
+               (int)std::min(iLen, (size_t)64), pInBuffer);
          return 0;
       }
    }
 
-   return (int) (out - pOutBuffer);
+   return (size_t) (out - pOutBuffer);
 }

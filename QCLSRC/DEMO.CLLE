@@ -7,8 +7,10 @@
              CHGVAR     VAR(&MYOUTPUT) VALUE('/home/' *TCAT &USRPRF +
                           *TCAT '/test_DB2JSON.json')
              CHGVAR     VAR(&SQL) VALUE('SELECT * FROM QIWS.QCUSTCDT')
-             /* Note: 3rd parm can be *REPLACE or -r to replace output file  */
-             CALL       PGM(DB2JSON/DB2JSON) PARM(&SQL &MYOUTPUT '*REPLACE')
+
+             DB2JSON/DB2JSON SQL(&SQL) STMF(&MYOUTPUT) +
+                          STMFOPTION(*REPLACE)
+
              SNDPGMMSG  MSG('DSPF ''' *CAT &MYOUTPUT *TCAT '''') +
                           TOPGMQ(*EXT) MSGTYPE(*RQS) KEYVAR(&MSGKEY)
              RCVMSG     PGMQ(*EXT) MSGTYPE(*RQS) MSGKEY(&MSGKEY) +

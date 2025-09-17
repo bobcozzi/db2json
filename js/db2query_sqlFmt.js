@@ -1,4 +1,4 @@
-// sqlFmt.js
+
 /**
  * Checks if the match is a real SQL keyword (not a host variable like :SELECT or &WHERE).
  */

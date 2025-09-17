@@ -9,6 +9,8 @@
                           DB2JSON/XLATE) +
                           BNDSRVPGM((QHTTPSVR/QZHBCGI)) +
                           ACTGRP(*NEW) OPTION(*DUPVAR)
+             CRTCMD     CMD(DB2JSON/DB2JSON) PGM(DB2JSON/DB2JSON) +
+                          SRCFILE(DB2JSON/QCMDSRC) SRCMBR(DB2JSON)
 
              /* Build the DEMO CL program that outputs to the IFS  */
              CRTBNDCL   PGM(DB2JSON/DEMO) SRCFILE(DB2JSON/QCLSRC) +
@@ -19,5 +21,4 @@
              CRTBNDCL   PGM(DB2JSON/DEBUG) SRCFILE(DB2JSON/QCLSRC) +
                           LOG(*NO) ALWRTVSRC(*YES) REPLACE(*YES) +
                           DBGVIEW(*SOURCE)
-
  ENDPGM:     ENDPGM
