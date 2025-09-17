@@ -889,7 +889,7 @@ bool readPOST_XForm(const std::string& body, std::string& outSql) {
         std::string e = urlDecodeEBCDIC(qRaw);
         outSql = !a.empty() ? a : e;
     }
-    logDb2jsonMsg("urlencoded q length=%d", (int)outSql.size());
+    logDb2jsonMsg("CGI Variable q length=%d", (int)outSql.size());
     return !outSql.empty();
 }
 
@@ -1090,19 +1090,27 @@ int main(int argc, char *argv[])
     int     bXLate = false;
     int     bIFSOutput = false;
 
-    logDb2jsonMsg("REQUEST_METHOD: %s", pReqMeth);
-    logDb2jsonMsg("QUERY_STING: %s", pQuery);
+    if (pReqMeth != NULL)
+    {
+        logDb2jsonMsg("REQUEST_METHOD: %s", pReqMeth);
+        if(strcmp(pReqMeth, "GET")==0)
+        {
+            logDb2jsonMsg("QUERY_STING: %s", pQuery);
+        }
+    }
 
     std::ostringstream jsonOut;  // buffer to debug the JSON output content
     std::string sqlStmt;
-    char reqMeth[32];
-    tmh_Getenv("REQUEST_METHOD", reqMeth, sizeof(reqMeth));
-    logDb2jsonMsg("tmh_REQ_METH: %s", reqMeth);
+    char Authorized_USER[32];
+
+    tmh_Getenv("REMOTE_USER", Authorized_USER, sizeof(Authorized_USER));
+    logDb2jsonMsg("REMOTE_USER: %s", Authorized_USER);
 
     if (clientCCSID <= 0)
     {
         clientCCSID = 1208;  // Use the client's CCSID otherwise use 1208
     }
+
         // Create this conversion here since we need it unconditionally
     utf16CCSID = 1200;
     UTF16toUTF8.openIBM( utf16CCSID , clientCCSID );
@@ -1212,7 +1220,6 @@ int main(int argc, char *argv[])
         // Assume sqlStmt is your input std::string (UTF-8)
         const char* pInBuffer = sqlStmt.c_str();
         int iLen = sqlStmt.length();
-        // Prepare output vector, size at least iLen * 4 (iconv best practice for UTF-8 to EBCDIC)
 
         // Convert use iconv if HTTP server doesn't do it automatically
         if (bXLate) {
@@ -1226,15 +1233,17 @@ int main(int argc, char *argv[])
 
 
     }
-      // IBM i requires JSON to be written to the browser/stdout as ASCII
-        // but the content type must be in EBCDIC.
-        // These rules apply when CGI_MODE = EBCDIC or %%EBCDIC%%
+
     if (bIFSOutput && pIFSFile && strlen(pIFSFile) > 0)
     {
         openIFSFile(outFile, pIFSFile, szIFSOption.c_str());
     }
     else
     {
+      // IBM i requires JSON to be written to the browser/stdout as ASCII
+      // but the Content Type header must be in the locale EBCDIC (job) CCSID.
+      // so we don't convert this  CGI header to ASCII before writing it out.
+      // These rules apply when CGI_MODE = EBCDIC or %%EBCDIC%%
         std::cout << "Content-Type: application/json" << endl << endl;
     }
 
@@ -1274,7 +1283,7 @@ int main(int argc, char *argv[])
     }
     sqlStmt.swap(cleaned);
 
-    logDb2jsonMsg("Query: %s - q=%s",reqMeth, sqlStmt.c_str());
+    logDb2jsonMsg("Query: %s - q=%s",pReqMeth, sqlStmt.c_str());
     SQLRETURN rc = 0;
     SQLHENV hEnv = NULL;
     SQLHDBC hDbc = NULL;
