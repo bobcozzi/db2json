@@ -1,4 +1,4 @@
-// Optional: keep handles if the browser supports the File System Access API
+// Keep handles if the browser supports the File System Access API
 let _lastFileHandle = null;
 let _lastFileName = null;
 
@@ -1291,44 +1291,69 @@ function setResultsMeta({ rowsCount, colsCount, tblname, libname }) {
   meta.title = txt;
 }
 
-function adjustPerPageToFit(resultsDiv, wrapper, tableEl) {
-  const dt = resultsDiv?._dt;
-  if (!dt || !wrapper || !tableEl) return;
-
-  const avail = setWrapperHeight(wrapper, 12);
-
-  const { topH, botH, headH, rowH } = measureHeights(wrapper, tableEl);
-  const fudge = 2; // avoid off-by-one pushing bottom bar out of view
-  const bodyAvail = Math.max(0, avail - topH - botH - headH - fudge);
-  const totalRows = tableEl.tBodies[0]?.rows?.length || 0;
-
-  const rowsThatFit = Math.max(1, Math.floor(bodyAvail / Math.max(1, rowH)));
-  const { v: perPage, perPageSelect } = snapPerPage(rowsThatFit, totalRows);
-
-  if (perPage === dt.options.perPage) return;
-
-  dt.options.perPage = perPage;
-  if (Array.isArray(perPageSelect)) dt.options.perPageSelect = perPageSelect;
-  if (typeof dt.setPage === 'function') dt.setPage(1);
-  if (typeof dt.update === 'function') dt.update();
-
-  const perPageSelectEl =
+function sanitizePerPageDropdown(wrapper, perPage) {
+  const sel =
     wrapper.querySelector('.datatable-dropdown select') ||
     wrapper.querySelector('.dataTable-dropdown select');
-  if (perPageSelectEl) {
-    const has = Array.from(perPageSelectEl.options).some(o => Number(o.value) === perPage);
-    if (!has) {
-      const opt = document.createElement('option');
-      opt.value = String(perPage);
-      opt.textContent = String(perPage);
-      perPageSelectEl.appendChild(opt);
-      const opts = Array.from(perPageSelectEl.options)
-        .sort((a, b) => Number(a.value) - Number(b.value));
-      perPageSelectEl.innerHTML = '';
-      opts.forEach(o => perPageSelectEl.appendChild(o));
+  if (!sel) return;
+
+  const seen = new Set();
+  const opts = Array.from(sel.options)
+    .map(o => Number(o.value))
+    .filter(v => Number.isFinite(v) && v >= 5 && !seen.has(v) && seen.add(v))
+    .sort((a, b) => a - b);
+
+  if (!opts.includes(perPage)) {
+    opts.push(perPage);
+    opts.sort((a, b) => a - b);
+  }
+
+  sel.innerHTML = '';
+  for (const v of opts) {
+    const opt = document.createElement('option');
+    opt.value = String(v);
+    opt.textContent = String(v);
+    sel.appendChild(opt);
+  }
+  sel.value = String(perPage); // do NOT dispatch change
+}
+
+function adjustPerPageToFit(resultsDiv, wrapper, tableEl) {
+  // prevent re-entrancy while layout is in flux
+  if (adjustPerPageToFit._running) return;
+  adjustPerPageToFit._running = true;
+
+  try {
+    const dt = resultsDiv?._dt;
+    if (!dt || !wrapper || !tableEl) return;
+
+    const avail = setWrapperHeight(wrapper, 12);
+
+    const { topH, botH, headH, rowH } = measureHeights(wrapper, tableEl);
+    const safeRowH = Number.isFinite(rowH) && rowH > 0 ? rowH : 24;
+    const safeTop = Number.isFinite(topH) ? topH : 0;
+    const safeBot = Number.isFinite(botH) ? botH : 0;
+    const safeHead = Number.isFinite(headH) ? headH : 0;
+
+    const fudge = 2;
+    const bodyAvail = Math.max(0, avail - safeTop - safeBot - safeHead - fudge);
+    let rowsThatFit = Math.floor(bodyAvail / safeRowH);
+    if (!Number.isFinite(rowsThatFit) || rowsThatFit <= 0) rowsThatFit = 5;
+
+    const totalRows = tableEl.tBodies[0]?.rows?.length || 0;
+    const { v: perPage, perPageSelect } = snapPerPage(rowsThatFit, totalRows);
+
+    if (perPage !== dt.options.perPage) {
+      dt.options.perPage = perPage;
+      if (Array.isArray(perPageSelect)) dt.options.perPageSelect = perPageSelect;
+      if (typeof dt.setPage === 'function') dt.setPage(1);
+      if (typeof dt.update === 'function') dt.update();
     }
-    perPageSelectEl.value = String(perPage);
-    perPageSelectEl.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // Keep the dropdown in sync without firing change (avoids plugin re-read glitches)
+    sanitizePerPageDropdown(wrapper, perPage);
+  } finally {
+    requestAnimationFrame(() => { adjustPerPageToFit._running = false; });
   }
 }
 
