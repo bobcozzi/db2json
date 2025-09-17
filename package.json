@@ -28,6 +28,8 @@
   "files": [
     "H/",
     "QCLSRC/",
+    "QCMDSRC/",
+    "QRPGLESRC/",
     "QCSRC/",
     "css/",
     "js/",
