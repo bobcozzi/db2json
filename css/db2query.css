@@ -19,7 +19,6 @@ body {
   margin: 2em;
 }
 
-
 .results-area {
   height: 100vh;
   /* or calc(100vh - [header/footer height]) */
@@ -27,32 +26,20 @@ body {
   flex-direction: column;
 }
 
-/* .scroll-body-table was unused in current markup; removed to reduce noise */
-
 #results {
   width: 100%;
   overflow-x: auto;
 }
-
-/* .scroll-container was unused in current markup; removed to ƒuce noise */
-
 .scroll-table {
   border-collapse: collapse;
   min-width: max-content;
   max-width: 100%;
   position: relative;
 }
-
 .scroll-table thead th {
   position: sticky;
   top: 0;
   z-index: 2;
-  /*
-     * Border and padding are set to 0 to prevent tbody rows from bleeding through
-     * the sticky header when scrolling. Any nonzero value here will allow a visual
-     * artifact where tbody content appears above the thead, due to browser rendering
-     * of sticky table headers in a single-table layout.
-     */
   border: 0;
   padding-top: 0;
   padding-bottom: 0;
@@ -591,8 +578,11 @@ td {
   height: 16px;
 }
 
-.tool-btn.copy-sql-btn .copy-sql-btn-label {
-  display: none;
+
+.tool-btn.copy-sql-btn .copy-sql-btn-label,
+.textarea-toolbar .copy-sql-btn .copy-sql-btn-label,
+.copy-sql-btn .copy-sql-btn-label {
+  display: none !important;
 }
 
 .sql-file-browser {
@@ -958,7 +948,6 @@ td {
 }
 
 
-
 /* Legacy file buttons that use `icon-btn` (Open/Save/Save As) */
 .textarea-toolbar .file-toolbar .icon-btn {
   width: 28px;
@@ -971,8 +960,32 @@ td {
   align-items: center;
   justify-content: center;
   background: transparent;
-  font-size: 0;
-  /* hide stray text */
+  cursor: pointer;
+  font-size: 0; /* hide stray text */
+  transition: background 0.2s, border-color 0.2s;
+}
+/* ADD these lines immediately AFTER line 963 (after the closing } of .textarea-toolbar .file-toolbar .icon-btn): */
+
+.textarea-toolbar .file-toolbar .icon-btn:hover {
+  background: #e8e8e8 !important;  /* Darker gray - was #f2f2f2 */
+  border-color: #ccc !important;    /* Slightly darker border too */
+}
+
+.textarea-toolbar .file-toolbar .icon-btn:active {
+  background: #d8d8d8 !important;  /* Even darker when clicked */
+}
+
+.icon-btn:hover,
+.tool-btn:hover,
+.copy-sql-btn:hover {
+  background: #e8e8e8 !important;  /* Darker gray - was #f2f2f2 */
+  border-color: #ccc !important;
+}
+
+.icon-btn:active,
+.tool-btn:active,
+.copy-sql-btn:active {
+  background: #d8d8d8 !important;  /* Darker when clicked */
 }
 
 .sql-editor-wrapper {
@@ -1047,4 +1060,39 @@ td {
     color: #eee;
     -webkit-text-fill-color: transparent;
   }
+}
+
+/* Format button (sibling of .file-toolbar, not inside it) */
+.textarea-toolbar .icon-btn.format-btn,
+.textarea-toolbar button.icon-btn:not(.file-toolbar .icon-btn) {
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  line-height: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.textarea-toolbar .icon-btn.format-btn:hover,
+.textarea-toolbar button.icon-btn:not(.file-toolbar .icon-btn):hover {
+  background: #e8e8e8 !important;  /* Darker gray - was #f2f2f2 */
+  border-color: #ccc !important;
+}
+
+.textarea-toolbar .icon-btn.format-btn:active,
+.textarea-toolbar button.icon-btn:not(.file-toolbar .icon-btn):active {
+  background: #d8d8d8 !important;  /* Darker when clicked */
+}
+
+/* Ensure SVG icons inside format button are sized correctly */
+.textarea-toolbar .icon-btn.format-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
 }

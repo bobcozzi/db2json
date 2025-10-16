@@ -219,8 +219,8 @@ window.formatCurrentSqlContext = function formatCurrentSqlContext() {
     selEnd = preRange.toString().length;
   }
 
-  if (selStart !== selEnd && typeof getSQLStmtsInSelection === 'function') {
-    const blocks = getSQLStmtsInSelection(full, selStart, selEnd);
+  if (selStart !== selEnd && typeof window.getSQLStmtsInSelection === 'function') {
+    const blocks = window.getSQLStmtsInSelection(full, selStart, selEnd);
     if (!blocks || !blocks.length) return;
 
     let newValue = full;
@@ -252,8 +252,8 @@ window.formatCurrentSqlContext = function formatCurrentSqlContext() {
   }
 
   // Single statement at caret
-  const loc = (typeof getSQLStmtAtCursor === 'function')
-    ? getSQLStmtAtCursor(full, cursor)
+  const loc = (typeof window.getSQLStmtAtCursor === 'function')
+    ? window.getSQLStmtAtCursor(full, cursor)
     : { start: 0, end: full.length, stmt: full };
 
   if (!loc || !loc.stmt) return;
@@ -276,147 +276,6 @@ window.formatCurrentSqlContext = function formatCurrentSqlContext() {
 };
 
 
-// === PATCH: Improve formatting of CASE/WHEN/THEN/ELSE and long CONCAT / column lists ===
-// 1. Extend keywords list + add line breaks before CASE/WHEN/THEN/ELSE/END.
-//    (Locate your existing formatSQL(sql) and replace ONLY the parts shown.)
-function formatSQL(sql) {
-  const keywords = [
-    'with', 'select', 'from', 'where', 'and', 'or', 'order by', 'group by', 'having',
-    'join', 'inner join', 'left join', 'right join', 'on', 'as', 'in', 'like',
-    'between', 'is null', 'is not null', 'exists', 'not exists',
-    'declare', 'cursor', 'for', 'prepare', 'open', 'fetch', 'close',
-    'case', 'when', 'then', 'else', 'end'
-  ];
-
-  // Replace keywords only if they are real SQL keywords (not host variables)
-  let formattedSQL = sql.trim().replace(/\s+/g, ' ');
-  for (const keyword of keywords.sort((a, b) => b.length - a.length)) {
-    const re = new RegExp(`\\b${keyword}\\b`, 'gi');
-    formattedSQL = formattedSQL.replace(re, function (match, offset) {
-      if (isRealKeyword(formattedSQL, offset)) {
-        return keyword.toUpperCase();
-      }
-      return match;
-    });
-  }
-
-  // Handle DECLARE ... CURSOR FOR with line breaks
-  formattedSQL = formattedSQL.replace(
-    /\bDECLARE\s+(\w+)\s+CURSOR\s+FOR\s+(SELECT\b[\s\S]+)/i,
-    function (_, name, select) {
-      return `DECLARE ${name} CURSOR FOR\n${select.trim()}`;
-    }
-  );
-
-  const eol = '\n';
-
-  function insertEOLIfRealKeyword(pattern) {
-    let result = '';
-    let lastIndex = 0;
-    let match;
-    while ((match = pattern.exec(formattedSQL)) !== null) {
-      const matchIndex = match.index;
-      if (isRealKeyword(formattedSQL, matchIndex)) {
-        if (matchIndex > 0) {
-          result += formattedSQL.slice(lastIndex, matchIndex) + eol + match[1];
-        } else {
-          result += formattedSQL.slice(lastIndex, matchIndex) + match[1];
-        }
-      } else {
-        result += formattedSQL.slice(lastIndex, pattern.lastIndex - match[1].length) + match[1];
-      }
-      lastIndex = pattern.lastIndex;
-    }
-    result += formattedSQL.slice(lastIndex);
-    formattedSQL = result;
-  }
-
-  // Existing breaks
-  insertEOLIfRealKeyword(/\b(SELECT|FROM|WHERE|WITH|ORDER BY|GROUP BY|HAVING|JOIN|ON)\b/gi);
-  insertEOLIfRealKeyword(/\b(AND|OR)\b/gi);
-  // Break before CASE/WHEN/END. THEN/ELSE will wrap only if line exceeds max width.
-  insertEOLIfRealKeyword(/\b(CASE|WHEN|END)\b/gi);
-
-  const majorKeywords = [
-    'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'WITH', 'DECLARE', 'CURSOR', 'FOR', 'CASE'
-  ];
-  const childKeywords = [
-    'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'ON', 'AND', 'OR', 'WHEN', 'THEN', 'ELSE'
-  ];
-
-  const lines = formattedSQL.split(/\n/);
-  let indented = [];
-  let lastMajor = null;
-  let firstMajorFound = false;
-  let caseIndentStack = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    let raw = lines[i];
-    if (!raw.trim()) continue;
-    let line = raw.trimEnd();
-    let upper = line.trimStart().toUpperCase();
-    let indent = '';
-    let matched = false;
-
-    // Handle END alignment for CASE
-    if (upper.startsWith('END') && caseIndentStack.length) {
-      indent = caseIndentStack[caseIndentStack.length - 1];
-      caseIndentStack.pop();
-      matched = true;
-    }
-
-    if (!matched) {
-      for (const kw of majorKeywords) {
-        if (upper.startsWith(kw)) {
-          if (!firstMajorFound) {
-            indent = '';
-            firstMajorFound = true;
-          } else {
-            indent = '  ';
-          }
-          lastMajor = kw;
-          matched = true;
-          // If CASE, push its indent for WHEN/THEN/ELSE
-          if (kw === 'CASE') {
-            caseIndentStack.push(indent);
-          }
-          break;
-        }
-      }
-    }
-
-    if (!matched) {
-      for (const kw of childKeywords) {
-        if (upper.startsWith(kw)) {
-          if (['WHEN', 'THEN', 'ELSE'].includes(kw) && caseIndentStack.length) {
-            indent = caseIndentStack[caseIndentStack.length - 1] + '  ';
-          } else {
-            let parentLen = lastMajor ? lastMajor.length : 0;
-            indent = ' '.repeat(parentLen + 1);
-          }
-          matched = true;
-          break;
-        }
-      }
-    }
-
-    if (!matched && lastMajor) {
-      if (indented.length > 0) {
-        let prev = indented[indented.length - 1];
-        let prevIndent = prev.match(/^(\s*)/)[1];
-        indent = prevIndent;
-      }
-    }
-
-    if (line.trimStart().length > 0) {
-      indented.push(indent + line.trimStart());
-    }
-  }
-
-  let result = indented.join('\n');
-  // FIX: use regex instead of trimEnd(" ;")
-  return result.replace(/[ \t\n;]+$/, '') + ';';
-}
 
 // Bridge: make sure window.formatSQL is set before the enhancer wraps it
 if (typeof window.formatSQL !== 'function' && typeof formatSQL === 'function') {

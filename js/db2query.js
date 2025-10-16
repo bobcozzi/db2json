@@ -1,5 +1,3 @@
-
-
 (function checkGlobalEnterPrevention() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
@@ -930,6 +928,9 @@ function copySqlInput() {
   const sqlInputArea = document.getElementById('sqlInput');
   if (!sqlInputArea) return;
 
+  // Variable to store cursor position when context menu opens
+  let savedCursorPosition = 0;
+
   // Create the custom menu
   const menu = document.createElement('div');
   menu.style.position = 'absolute';
@@ -951,6 +952,11 @@ function copySqlInput() {
 
   sqlInputArea.addEventListener('contextmenu', function (e) {
     e.preventDefault();
+
+    // Save the current cursor position BEFORE showing menu
+    savedCursorPosition = getCaretPosition(sqlInputArea);
+    console.log('Context menu opened, saved cursor position:', savedCursorPosition);
+
     menu.style.left = e.pageX + 'px';
     menu.style.top = e.pageY + 'px';
     menu.style.display = 'block';
@@ -958,10 +964,28 @@ function copySqlInput() {
 
   menu.addEventListener('contextmenu', e => e.preventDefault());
 
-  // find the context menu click handler:
+  // Context menu click handler
   menu.querySelector('#formatSqlMenuItem').addEventListener('click', function () {
+    console.log('Format menu clicked');
     menu.style.display = 'none';
-    if (window.formatCurrentSqlContext) formatCurrentSqlContext();
+
+    // Restore focus to sqlInputArea
+    sqlInputArea.focus();
+
+    // Restore cursor position
+    if (savedCursorPosition > 0) {
+      setCaretPosition(sqlInputArea, savedCursorPosition);
+      console.log('Restored cursor position to:', savedCursorPosition);
+    }
+
+    // Check if function exists when clicked (not when handler is attached)
+    if (typeof window.formatCurrentSqlContext === 'function') {
+      console.log('Calling formatCurrentSqlContext');
+      window.formatCurrentSqlContext();
+    } else {
+      console.error('formatCurrentSqlContext not available:', typeof window.formatCurrentSqlContext);
+      alert('SQL formatter not loaded. Please refresh the page.');
+    }
   });
 })();
 
@@ -1353,7 +1377,7 @@ function adjustPerPageToFit(resultsDiv, wrapper, tableEl) {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       if (window.formatCurrentSqlContext) {
-        formatCurrentSqlContext();
+        window.formatCurrentSqlContext();
       } else {
         console.warn('formatCurrentSqlContext not available yet.');
       }
@@ -1410,35 +1434,35 @@ function adjustPerPageToFit(resultsDiv, wrapper, tableEl) {
   // Handle Enter manually - insert <br> instead of text node
   console.log('Attaching keydown handler to sqlInput');
 
- sqlInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
-    e.preventDefault();
-    e.stopPropagation();
+  sqlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      e.stopPropagation();
 
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return;
+      const sel = window.getSelection();
+      if (!sel.rangeCount) return;
 
-    const range = sel.getRangeAt(0);
-    range.deleteContents();
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
 
-    // 1️⃣ Insert the spacer first
-    const spacer = document.createTextNode('\u200B');
-    range.insertNode(spacer);
+      // 1️⃣ Insert the spacer first
+      const spacer = document.createTextNode('\u200B');
+      range.insertNode(spacer);
 
-    // 2️⃣ Then insert the <br> *before* the spacer
-    const br = document.createElement('br');
-    spacer.parentNode.insertBefore(br, spacer);
+      // 2️⃣ Then insert the <br> *before* the spacer
+      const br = document.createElement('br');
+      spacer.parentNode.insertBefore(br, spacer);
 
-    // 3️⃣ Move caret after spacer (after the <br>)
-    range.setStartAfter(spacer);
-    range.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(range);
+      // 3️⃣ Move caret after spacer (after the <br>)
+      range.setStartAfter(spacer);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
 
-    // 4️⃣ Update highlight
-    updateHighlight();
-  }
-});
+      // 4️⃣ Update highlight
+      updateHighlight();
+    }
+  });
 
   // Single input event for all other changes
   sqlInput.addEventListener('input', updateHighlight);
