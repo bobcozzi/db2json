@@ -3,8 +3,15 @@
   --pad: 12px;
   --gap: 10px;
   --font: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-  /* Space to leave for header/controls above results; tweak as needed */
   --results-offset: 12rem;
+  --editor-font-size: 16px;
+  /* Change from 20px to 16px */
+  --editor-line-height: 1.4;
+  /* Change from 24px to 1.4 */
+  --pad-vertical: 9px;
+  --pad-horizontal: 12px;
+  --overlay-nudge-x: -14px;
+  --overlay-nudge-y: -11px;
 }
 
 body {
@@ -14,7 +21,8 @@ body {
 
 
 .results-area {
-  height: 100vh; /* or calc(100vh - [header/footer height]) */
+  height: 100vh;
+  /* or calc(100vh - [header/footer height]) */
   display: flex;
   flex-direction: column;
 }
@@ -26,7 +34,7 @@ body {
   overflow-x: auto;
 }
 
-/* .scroll-container was unused in current markup; removed to reduce noise */
+/* .scroll-container was unused in current markup; removed to ƒuce noise */
 
 .scroll-table {
   border-collapse: collapse;
@@ -110,7 +118,8 @@ body {
 #results .scroll-table-wrapper .datatable-container {
   overflow: visible !important;
   max-height: none !important;
-  padding-bottom: 44px; /* avoid rows under pager */
+  padding-bottom: 44px;
+  /* avoid rows under pager */
 }
 
 /* Keep top/bottom bars participating in flow (not absolute) */
@@ -435,81 +444,70 @@ td {
 }
 
 /* History row (unchanged) */
-#sqlForm .history-row {
+.history-row {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: nowrap;
   width: 100%;
+  margin-bottom: 0.5em; /* Add spacing below history */
 }
 
-#sqlForm .history-row #sqlHistoryDropdown {
+.history-row #sqlHistoryDropdown {
   flex: 1 1 auto;
   min-width: 220px;
-  max-width: 100%;
+  max-width: 90%;
   box-sizing: border-box;
 }
 
-#sqlForm .history-row #editSqlHistoryBtn,
-#sqlForm .history-row #clearSqlHistoryBtn {
+.history-row #editSqlHistoryBtn,
+.history-row #clearSqlHistoryBtn {
   flex: 0 0 auto;
   white-space: nowrap;
-}
-
-/* Textarea sizing */
-#sqlInput {
-  display: block;
-  width: 80vw;
-  min-width: 25vw;
-  height: 20vh;
-  max-width: 100%;
-  box-sizing: border-box;
-  resize: both;
-  overflow: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  tab-size: 4;
-  /* tabs render predictably */
-  -webkit-text-size-adjust: 100%;
-  /* prevent iOS Safari zoom/resize weirdness */
-  font-variant-ligatures: none;
-  /* avoid “smart” ligatures in some fonts */
-  caret-color: #0b5ad9;
-  /* visible caret */
 }
 
 /* Textarea row: not flex; let textarea control size */
 .sql-textarea-row {
   display: block;
-  width: auto;
-}
-
-/* Container for textarea + floating toolbar */
-.textarea-btn-container {
+  width: 80vw; /* Changed from 100% to 80% of viewport width */
+  min-width: 300px;
+  max-width: 100vw;
+  height: 200px;
+  min-height: 200px;
+  max-height: 60vh;
+  resize: both;
+  overflow: hidden;
   position: relative;
-  display: inline-block;
-  /* shrink-wrap to textarea */
-  width: auto;
-  max-width: 100%;
-  padding-top: 34px;
-  /* reserve space above textarea for toolbar */
-  overflow: visible;
-  resize: none;
+  border: 1px solid #ccc;
 }
 
-/* Toolbar docked above the textarea (reserve space so it doesn’t cover text) */
+/* Container for textarea + floating tool bar */
+.textarea-btn-container {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  /* Toolbar auto-height, editor fills remaining */
+  width: 100%;
+  height: 100%;
+  position: relative;
+  gap: 0;
+  /* No gap between rows */
+}
+
+/* Tool bar docked above the textarea (reserve space so it doesn’t cover text) */
 .textarea-toolbar {
-  position: absolute;
-  top: 4px;
-  right: 8px;
-  display: inline-flex;
-  gap: 6px;
-  white-space: nowrap;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  padding: 4px;
+  grid-row: 1;
+  /* Explicitly in first row */
+  display: flex;
+  justify-content: flex-end;
   align-items: center;
+  padding: 4px 8px;
+  gap: 6px;
+  background: #f8f8f8;
+  border-bottom: 1px solid #ddd;
   z-index: 3;
+  /* Remove any absolute positioning */
+  position: static;
+  /* Ensure it participates in grid */
 }
 
 /* Uniform icon-only buttons */
@@ -569,7 +567,7 @@ td {
 
 /* Save As (floppy + marker) */
 .tool-btn.icon-saveas::before {
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M5 3h11l3 3v15H5z' fill='none' stroke='%23111' stroke-width='1.6'/><path d='M7 3v6h10V6l-2-3' fill='none' stroke='%23111' stroke-width='1.6'/><path d='M8 21v-6h6v6' fill='none' stroke='%23111' stroke-width='1.6'/><path d='M16 16l3 3' fill='none' stroke='%23111' stroke-width='1.6' stroke-linecap='round'/><path d='M17 14a2 2 0 1 1 0 4' fill='none' stroke='%23111' stroke-width='1.6' stroke-linecap='round'/></svg>");
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><g><path d='M5 3h11l3 3v15H5z' fill='none' stroke='%23111' stroke-width='1.6'/><path d='M7 3v6h10V6l-2-3' fill='none' stroke='%23111' stroke-width='1.6'/><path d='M8 21v-6h8v6' fill='none' stroke='%23111' stroke-width='1.6'/></g><g><path d='M17.5 17.5l2-2a1 1 0 0 1 1.4 0l0.6 0.6a1 1 0 0 1 0 1.4l-2 2' fill='none' stroke='%23111' stroke-width='1.2'/><rect x='16.5' y='17' width='2.5' height='1' fill='%23111' transform='rotate(-45 17.75 17.5)'/></g></svg>");
 }
 
 /* Copy button: keep checkmark overlay working and hide its text label in the toolbar */
@@ -758,32 +756,14 @@ td {
   background: var(--results-bg, #fff);
 }
 
-/* Remove conflicting wrapper block (was inline-block, max-content, 40vh, etc.) */
-/* DELETE or comment out this entire block if present:
-.results-area #results .scroll-table-wrapper {
-  display: inline-block;
-  width: max-content;
-  max-width: 100%;
-  box-sizing: border-box;
-  height: 40vh;
-  min-height: 160px;
-  max-height: calc(100dvh - var(--results-offset));
-  overflow: auto;
-  resize: vertical;
-  -webkit-overflow-scrolling: touch;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: #fff;
-}
-#results .scroll-table-wrapper { max-height: none; }
-*/
 
 /* Simple-DataTables inside our scroll wrapper */
 /* Use v9 lowercase class names */
 #results .scroll-table-wrapper .datatable-container {
   overflow: visible !important;
   max-height: none !important;
-  padding-bottom: 44px; /* avoid rows under pager */
+  padding-bottom: 44px;
+  /* avoid rows under pager */
 }
 
 /* Keep top/bottom bars participating in flow (not absolute) */
@@ -832,11 +812,14 @@ td {
 
 .visually-hidden {
   position: absolute !important;
-  height: 1px;
-  width: 1px;
-  overflow: hidden;
-  clip: rect(1px, 1px, 1px, 1px);
-  white-space: nowrap;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
 }
 
 #sqlHistoryDropdown option.last-stmt {
@@ -926,12 +909,6 @@ td {
     border-color: #444;
   }
 
-  #sqlInput {
-    background: #181a1b !important;
-    color: #eee !important;
-    border-color: #444 !important;
-    caret-color: #8bb4ff !important;
-  }
 
   .results-meta {
     color: #bbb !important;
@@ -972,5 +949,102 @@ td {
     border-radius: 4px;
     font-weight: bold;
     border: none;
+  }
+
+  .sql-editor-wrapper #sqlInput,
+  .sql-editor-wrapper pre.sql-highlight-layer {
+    caret-color: #8bb4ff;
+  }
+}
+
+
+
+/* Legacy file buttons that use `icon-btn` (Open/Save/Save As) */
+.textarea-toolbar .file-toolbar .icon-btn {
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  line-height: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  font-size: 0;
+  /* hide stray text */
+}
+
+.sql-editor-wrapper {
+  grid-row: 2;
+  position: relative;
+  display: grid; /* Make this a grid container to stack children */
+  grid-template: 1fr / 1fr; /* Single-cell grid for stacking */
+  overflow: auto;
+  width: 100%;
+  height: 100%;
+  min-height: 100px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 16px;
+  line-height: 1.5;
+  letter-spacing: 0;
+  word-spacing: 0;
+  font-variant-ligatures: none;
+  text-rendering: optimizeSpeed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Prism highlight layer - stacked via grid */
+.sql-editor-wrapper pre.sql-highlight-layer {
+  grid-area: 1 / 1; /* Occupy the single grid cell */
+  align-self: start; /* Align to top */
+  margin: 0;
+  padding: 12px;
+  background: transparent;
+  font: inherit;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow: visible; /* Allow natural expansion */
+  pointer-events: none;
+  z-index: 1;
+  letter-spacing: inherit;
+  word-spacing: inherit;
+  text-rendering: inherit;
+  font-variant-ligatures: inherit;
+}
+
+/* Editable SQL input - stacked via grid */
+#sqlInput.sql-editor {
+  grid-area: 1 / 1;
+  align-self: start;
+  display: block;
+  width: 100%;
+  min-height: 100%;
+  padding: 12px;
+  margin: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #333; /* CHANGED: Use visible text color */
+  caret-color: #0b5ad9;
+  font: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow: visible;
+  z-index: 2;
+  -webkit-text-fill-color: transparent; /* Makes text transparent but preserves layout */
+  -webkit-background-clip: text;
+}
+
+/* For dark mode */
+@media (prefers-color-scheme: dark) {
+  #sqlInput.sql-editor {
+    color: #eee;
+    -webkit-text-fill-color: transparent;
   }
 }

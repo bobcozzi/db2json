@@ -1,3 +1,27 @@
+
+
+(function checkGlobalEnterPrevention() {
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      console.log('GLOBAL keyDOWN Enter caught', {
+        target: e.target.id || e.target.className,
+        defaultPrevented: e.defaultPrevented,
+        phase: e.eventPhase
+      });
+    }
+  }, true);
+
+  document.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      console.log('GLOBAL keyPRESS Enter caught', {
+        target: e.target.id || e.target.className,
+        defaultPrevented: e.defaultPrevented,
+        phase: e.eventPhase
+      });
+    }
+  }, true);
+})();
+
 // Keep handles if the browser supports the File System Access API
 let _lastFileHandle = null;
 let _lastFileName = null;
@@ -16,7 +40,7 @@ if (typeof window.showToast !== 'function') {
     el.className = `toast ${type}`;
     const msgSpan = document.createElement('span');
     msgSpan.className = 'toast-msg';
-    msgSpan.textContent = String(message); // safe text insertion
+    msgSpan.textContent = message;
     const closeBtn = document.createElement('button');
     closeBtn.className = 'toast-close';
     closeBtn.setAttribute('aria-label', 'Dismiss');
@@ -97,7 +121,7 @@ if (document.readyState === 'loading') {
 
 function ensureSqlExt(name) {
   name = (name || '').trim();
-  if (!name) return 'query.sql';
+  if (!name) return 'db2Query.sql';
   return /\.(sql|txt)$/i.test(name) ? name : name + '.sql';
 }
 
@@ -128,22 +152,12 @@ function getNextSqlTokenRange(sql, offset, stmtStart, stmtEnd) {
 }
 
 
-// Keep copy button disabled when textarea empty
-function updateCopySqlEnabled() {
-  const btn = document.getElementById('copySqlInputBtn');
-  const ta = document.getElementById('sqlInput');
-  if (!btn || !ta) return;
-  const hasText = (ta.value || '').trim().length > 0;
-  btn.disabled = !hasText;
-  btn.setAttribute('aria-disabled', String(!hasText));
-}
-
 function initDb2jsonUI() {
   if (window._db2jsonInited) return;
   window._db2jsonInited = true;
 
   const sqlForm = document.getElementById('sqlForm');
-  const textarea = document.getElementById('sqlInput');
+  const sqlInputArea = document.getElementById('sqlInput');
   const submitModeEncoding = document.getElementById('submitMode');
   const copySqlInputBtn = document.getElementById('copySqlInputBtn');
   const copyBtnRow = document.getElementById('copyBtnRow');
@@ -173,8 +187,22 @@ function initDb2jsonUI() {
     copyBtnTable.addEventListener('click', () => copyTableToClipboard(document.getElementById('results')));
   }
 
-  // Form submit
-  if (sqlForm) sqlForm.addEventListener('submit', handleSqlSubmit);
+  // Form submit handler - SIMPLIFIED (no keypress listener needed)
+  if (sqlForm) {
+    sqlForm.addEventListener('submit', handleSqlSubmit);
+  }
+
+  // Wire "Run SQL" button to submit the form
+  const runSqlBtn = document.querySelector('.run-sql-btn');
+  if (runSqlBtn) {
+    runSqlBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (sqlForm) {
+        // Dispatch submit event (which calls handleSqlSubmit)
+        sqlForm.dispatchEvent(new Event('submit', { cancelable: true }));
+      }
+    });
+  }
 
   // Copy SQL input
   if (copySqlInputBtn) copySqlInputBtn.addEventListener('click', copySqlInput);
@@ -213,26 +241,59 @@ function initDb2jsonUI() {
   if (cancelBtn) cancelBtn.addEventListener('click', closeEditHistoryModal);
   if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) closeEditHistoryModal(); });
 
-  // Textarea state and layout
-  if (textarea) {
-    textarea.addEventListener('input', updateCopySqlEnabled);
+  // sqlInputArea state and layout
+  if (sqlInputArea) {
+    sqlInputArea.addEventListener('input', updateCopySqlEnabled);
     updateCopySqlEnabled();
   }
   attachSqlInputResizeSync();
   hardenSqlTextarea();
 
-  // File Open/Save/Save As (icons handled by CSS; do not set textContent here)
-  if (openBtn) openBtn.addEventListener('click', openSqlFile);
-  if (saveBtn) {
-    saveBtn.addEventListener('click', async () => {
+  // File Open/Save/Save As (non-destructive: keep existing SVG/img/icon markup)
+  function wireFileButton(btn, { label, onClick }) {
+    if (!btn) return;
+    // Detect if it already contains any element child (svg, img, span, etc.)
+    const hasElementChild = btn.querySelector('*') !== null;
+
+    // Do NOT overwrite existing icon markup
+    if (!hasElementChild) {
+      // Only add fallback text if there is no meaningful text already
+      const onlyWhitespace = !btn.textContent || /^\s*$/.test(btn.textContent);
+      if (onlyWhitespace) btn.textContent = label;
+    }
+
+    // Accessibility
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+
+    if (!btn._wiredClick) {
+      btn.addEventListener('click', onClick);
+      btn._wiredClick = true;
+    }
+  }
+
+  wireFileButton(openBtn, {
+    label: 'Open SQL File...',
+    onClick: openSqlFile
+  });
+  wireFileButton(saveBtn, {
+    label: 'Save',
+    onClick: async () => {
       const ok = await saveSqlToCurrentFile();
       if (!ok) await saveSqlAsFile();
-    });
-  }
-  if (saveAsBtn) saveAsBtn.addEventListener('click', saveSqlAsFile);
+    }
+  });
+  wireFileButton(saveAsBtn, {
+    label: 'Save SQL As...',
+    onClick: saveSqlAsFile
+  });
 
   // Enable/disable Save appropriately; also triggers the context toast via the hook
   updateSaveButtonsState();
+
+  if (typeof updateCopySqlEnabled === 'function') {
+    updateCopySqlEnabled();
+  }
 }
 
 // Initialize once DOM is ready
@@ -270,27 +331,48 @@ function escapeHTML(str) {
 
 // Extracts the SQL statement at the cursor position, skipping quoted semicolons
 function getSQLStmtAtCursor(input, cursorPos) {
-  // Find start
+  if (!input) return { stmt: '', start: 0, end: 0 };
+
+  // Clamp cursor position
+  cursorPos = Math.max(0, Math.min(input.length, cursorPos));
+
+  // Find start - search backwards from cursor
   let inSingle = false, inDouble = false;
   let start = 0;
+
   for (let i = cursorPos - 1; i >= 0; i--) {
     const c = input[i];
     if (c === "'" && !inDouble) inSingle = !inSingle;
     else if (c === '"' && !inSingle) inDouble = !inDouble;
-    else if (c === ';' && !inSingle && !inDouble) { start = i + 1; break; }
+    else if (c === ';' && !inSingle && !inDouble) {
+      start = i + 1;
+      break;
+    }
   }
-  // Find end
-  inSingle = false; inDouble = false;
+
+  // Find end - search forwards from cursor
+  inSingle = false;
+  inDouble = false;
   let end = input.length;
+
   for (let i = cursorPos; i < input.length; i++) {
     const c = input[i];
     if (c === "'" && !inDouble) inSingle = !inSingle;
     else if (c === '"' && !inSingle) inDouble = !inDouble;
-    else if (c === ';' && !inSingle && !inDouble) { end = i + 1; break; }
+    else if (c === ';' && !inSingle && !inDouble) {
+      end = i + 1;
+      break;
+    }
   }
+
+  // Extract statement and trim
   let stmt = input.slice(start, end).trim();
+
   // Remove trailing semicolon for cleaner UX
-  if (stmt.endsWith(';')) stmt = stmt.slice(0, -1).trim();
+  if (stmt.endsWith(';')) {
+    stmt = stmt.slice(0, -1).trim();
+  }
+
   return { stmt, start, end };
 }
 
@@ -329,9 +411,9 @@ function getSQLStmtsInSelection(input, selectionStart, selectionEnd) {
 
 async function handleSqlSubmit(e) {
   e.preventDefault();
-  const textarea = document.getElementById('sqlInput');
-  const input = textarea.value;
-  const cursor = textarea.selectionStart;
+  const sqlInputArea = document.getElementById('sqlInput');
+  const input = sqlInputArea.textContent;
+  const cursor = getCaretPosition(sqlInputArea);
   const errorDiv = document.getElementById('error');
   const resultsDiv = document.getElementById('results');
   const copyBtnRow = document.getElementById('copyBtnRow');
@@ -342,13 +424,22 @@ async function handleSqlSubmit(e) {
 
   errorDiv.textContent = 'Running your request...';
   errorDiv.style.background = 'none';
-  errorDiv.style.color = '#008800'; // dark 5250 green
+  errorDiv.style.color = '#008800';
   resultsDiv.innerHTML = '';
   if (copyBtnRow) copyBtnRow.classList.add('is-hidden');
 
-
-  // Get the statement at the cursor
   const { stmt: query, start: start, end: end } = getSQLStmtAtCursor(input, cursor);
+
+  if (!query || query.trim() === '') {
+    errorDiv.textContent = 'No statement selected';
+    errorDiv.style.background = 'none';
+    errorDiv.style.color = '#B71C1C';
+    // === ADD FOCUS RESTORATION ===
+    sqlInputArea.focus();
+    // === END ===
+    return;
+  }
+
   try {
     const submitMode = (document.getElementById('submitMode')?.value) || 'GET';
     let response;
@@ -370,26 +461,46 @@ async function handleSqlSubmit(e) {
         body: fd
       });
     }
+
     errorDiv.textContent = 'Loading resultSet...';
     errorDiv.style.background = 'none';
-    errorDiv.style.color = '#008800'; // dark 5250 green
+    errorDiv.style.color = '#008800';
     let text = await response.text();
 
-    if (text.startsWith('%')) text = text.substring(1);
-    if (text.endsWith('%')) text = text.slice(0, -1);
+    if (text.trim().startsWith('<!DOCTYPE')) {
+      errorDiv.innerHTML = text;
+      errorDiv.style.background = '#fff';
+      errorDiv.style.color = '#B71C1C';
+      // === ADD FOCUS RESTORATION ===
+      sqlInputArea.focus();
+      // === END ===
+      return;
+    }
 
-    const json = JSON.parse(text);
+    let json;
+    try {
+      let cleanText = text.trim();
+      if (cleanText.startsWith('%') && cleanText.endsWith('%')) {
+        cleanText = cleanText.slice(1, -1).trim();
+      }
+      json = JSON.parse(cleanText);
+    } catch (err) {
+      errorDiv.textContent = text;
+      errorDiv.style.background = '#fff';
+      errorDiv.style.color = '#B71C1C';
+      // === ADD FOCUS RESTORATION ===
+      sqlInputArea.focus();
+      // === END ===
+      return;
+    }
 
     if (json.error) {
       if (String(json.error.sqlstate).toUpperCase() != 'SYNTAX') {
         errorDiv.textContent = `SQLSTATE: ${json.error.sqlstate || 'ERROR'} - ${json.error.msgtext || 'An error occurred.'}`;
-      }
-      // If SYNTAX error, move caret to the offending column within the statement we ran
-      else {
+      } else {
         errorDiv.textContent = `SYNTAX ERROR at pos: ${json.error.msgtext || 'An error occurred.'}`;
         const ta = document.getElementById('sqlInput');
         if (ta) {
-          // Prefer explicit position if present, else parse leading integer "<n>,"
           let pos = 0;
           if (typeof json.error.position === 'number' && isFinite(json.error.position)) {
             pos = json.error.position;
@@ -398,19 +509,28 @@ async function handleSqlSubmit(e) {
             if (m) pos = parseInt(m[1], 10);
           }
 
-          // Clamp inside the statement we just executed
-          let offset = start; // start/end from getSQLStmtAtCursor earlier in this function
+          let offset = start;
           if (pos > 0) {
             offset = Math.max(start, Math.min(end, start + (pos - 1)));
           }
 
-          // Compute token selection
           const { start: selStart, end: selEnd } = getNextSqlTokenRange(ta.value, offset, start, end);
 
           ta.focus();
-          ta.setSelectionRange(selStart, selEnd);
+          const range = document.createRange();
+          const textNode = ta.firstChild || ta;
+          const safeStart = Math.min(selStart, textNode.textContent?.length || 0);
+          const safeEnd = Math.min(selEnd, textNode.textContent?.length || 0);
+          range.setStart(textNode, safeStart);
+          range.setEnd(textNode, safeEnd);
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
         }
       }
+      // === ADD FOCUS RESTORATION ===
+      sqlInputArea.focus();
+      // === END ===
       return;
     }
 
@@ -419,9 +539,9 @@ async function handleSqlSubmit(e) {
     populateSqlHistoryDropdown();
 
     renderTable(json, resultsDiv);
-    errorDiv.textContent = '';  // remove loading resultset message
+    errorDiv.textContent = '';
     errorDiv.style.background = 'none';
-    errorDiv.style.color = '#B71C1C'; // revert to red text
+    errorDiv.style.color = '#B71C1C';
     if (copyBtnRow) copyBtnRow.classList.remove('is-hidden');
 
     if (copyBtnTable) {
@@ -430,10 +550,17 @@ async function handleSqlSubmit(e) {
     if (copyBtnPage) {
       copyBtnPage.onclick = () => copyCurrentPageToClipboard(resultsDiv);
     }
+
+    // === ADD FOCUS RESTORATION AT END OF SUCCESS PATH ===
+    sqlInputArea.focus();
+    // === END ===
   } catch (err) {
     errorDiv.textContent = err.message || 'Error running query.';
     errorDiv.style.background = 'none';
-    errorDiv.style.color = '#B71C1C'; // revert to red text
+    errorDiv.style.color = '#B71C1C';
+    // === ADD FOCUS RESTORATION ===
+    sqlInputArea.focus();
+    // === END ===
   }
 }
 
@@ -630,27 +757,48 @@ function renderTable(json, resultsDiv) {
 
   // 3) Initialize Simple-DataTables ONCE with the computed perPage
   if (tableEl && window.simpleDatatables?.DataTable) {
-    resultsDiv._dt = new simpleDatatables.DataTable(tableEl, {
-      searchable: true,
-      perPage,
-      perPageSelect
-    });
-
-    // Precisely fit perPage once bars exist
+    // Wait for the table to be painted and visible
     requestAnimationFrame(() => {
-      try { adjustPerPageToFit(resultsDiv, wrapper, tableEl); } catch { }
-    });
+      // Defensive: check again after paint
+      const theadH = tableEl.tHead ? Math.ceil(tableEl.tHead.getBoundingClientRect().height || 0) : 0;
+      const firstRow = tableEl.querySelector('tbody tr');
+      const rowH = firstRow ? Math.max(20, Math.ceil(firstRow.getBoundingClientRect().height || 24)) : 24;
+      const avail = setWrapperHeight(wrapper, 12);
+      const controlsReserve = 84;
+      const bodyAvail = Math.max(0, avail - theadH - controlsReserve);
+      const totalRows = rows.length;
+      const estRows = Math.max(1, Math.floor(bodyAvail / rowH));
+      const snap = (n, max) => {
+        let v = Math.max(1, Math.floor(n));
+        v = v - (v % 5); if (v < 5) v = 5;
+        if (max && v > max) v = max;
+        if (!perPageSelect.includes(v)) perPageSelect = [...perPageSelect, v].sort((a, b) => a - b);
+        return v;
+      };
+      const finalPerPage = snap(estRows, totalRows);
 
-    // Recompute on browser resize; avoid multiple handlers
-    if (resultsDiv._dtResizeHandler) {
-      window.removeEventListener('resize', resultsDiv._dtResizeHandler);
-      if (window.visualViewport) window.visualViewport.removeEventListener('resize', resultsDiv._dtResizeHandler);
-    }
-    resultsDiv._dtResizeHandler = debounced(150, () => {
-      try { adjustPerPageToFit(resultsDiv, wrapper, tableEl); } catch { }
+      resultsDiv._dt = new simpleDatatables.DataTable(tableEl, {
+        searchable: true,
+        perPage: finalPerPage,
+        perPageSelect
+      });
+
+      // Precisely fit perPage once bars exist
+      requestAnimationFrame(() => {
+        try { adjustPerPageToFit(resultsDiv, wrapper, tableEl); } catch { }
+      });
+
+      // Recompute on browser resize; avoid multiple handlers
+      if (resultsDiv._dtResizeHandler) {
+        window.removeEventListener('resize', resultsDiv._dtResizeHandler);
+        if (window.visualViewport) window.visualViewport.removeEventListener('resize', resultsDiv._dtResizeHandler);
+      }
+      resultsDiv._dtResizeHandler = debounced(150, () => {
+        try { adjustPerPageToFit(resultsDiv, wrapper, tableEl); } catch { }
+      });
+      window.addEventListener('resize', resultsDiv._dtResizeHandler, { passive: true });
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', resultsDiv._dtResizeHandler, { passive: true });
     });
-    window.addEventListener('resize', resultsDiv._dtResizeHandler, { passive: true });
-    if (window.visualViewport) window.visualViewport.addEventListener('resize', resultsDiv._dtResizeHandler, { passive: true });
   }
 
   setResultsMeta({ rowsCount: rows.length, colsCount: columns.length, tblname, libname });
@@ -661,116 +809,7 @@ function renderTable(json, resultsDiv) {
   requestAnimationFrame(() => { try { sizeResultsViewport(); } catch { } });
 }
 
-function copyTableToClipboard(resultsDiv) {
-  const delimiter = {
-    tab: '\t',
-    comma: ',',
-    pipe: '|'
-  }[document.getElementById('copyBtnOption').value || 'tab'];
 
-  const columns = window._lastRenderedColumns;
-  const rows = window._lastRenderedRows;
-  if (Array.isArray(columns) && Array.isArray(rows)) {
-    let tsv = columns.join(delimiter) + '\n';
-    rows.forEach(row => {
-      const cells = columns.map(col => {
-        let val = row[col];
-        if (val == null) return '';
-        let s = String(val).replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-        // For CSV, quote if needed
-        if (delimiter === ',' && (s.includes(',') || s.includes('"'))) {
-          s = '"' + s.replace(/"/g, '""') + '"';
-        }
-        return s;
-      });
-      tsv += cells.join(delimiter) + '\n';
-    });
-    if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(tsv).then(() => feedbackCopySuccess());
-    } else {
-      fallbackCopy(tsv, feedbackCopySuccess);
-    }
-    return;
-  }
-
-  // Fallback: copy only visible rows (shouldn't happen, but safe)
-  const table = resultsDiv.querySelector('table');
-  if (!table) return;
-  let tsv = '';
-  const headers = Array.from(table.querySelectorAll('thead th')).map(th =>
-    th.innerText.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim()
-  );
-  tsv += headers.join(delimiter) + '\n';
-
-  table.querySelectorAll('tbody tr').forEach(tr => {
-    const cells = Array.from(tr.children).map(td =>
-      (td.innerText ?? '').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim()
-    );
-    tsv += cells.join(delimiter) + '\n';
-  });
-
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(tsv).then(() => feedbackCopySuccess());
-  } else {
-    fallbackCopy(tsv, feedbackCopySuccess);
-  }
-}
-
-function copyCurrentPageToClipboard(resultsDiv) {
-  const delimiter = {
-    tab: '\t',
-    comma: ',',
-    pipe: '|'
-  }[document.getElementById('copyBtnOption').value || 'tab'];
-
-  const table = resultsDiv.querySelector('table');
-  if (!table) return;
-
-  let tsv = '';
-  const headers = Array.from(table.querySelectorAll('thead th')).map(th => th.innerText.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim());
-  tsv += headers.join(delimiter) + '\n';
-
-  table.querySelectorAll('tbody tr').forEach(tr => {
-    const cells = Array.from(tr.children).map(td => {
-      let s = (td.innerText ?? '').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-      // For CSV, quote if needed
-      if (delimiter === ',' && (s.includes(',') || s.includes('"'))) {
-        s = '"' + s.replace(/"/g, '""') + '"';
-      }
-      return s;
-    });
-    tsv += cells.join(delimiter) + '\n';
-  });
-
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(tsv).then(() => feedbackCopyCurrentPageSuccess());
-  } else {
-    fallbackCopy(tsv, feedbackCopyCurrentPageSuccess);
-  }
-}
-
-function feedbackCopyCurrentPageSuccess() {
-  const btn = document.getElementById('copyBtnPage');
-  btn.innerText = 'Copied!';
-  setTimeout(() => { btn.innerText = 'Copy Page'; }, 1200);
-}
-
-function feedbackCopySuccess() {
-  const btn = document.getElementById('copyBtnTable');
-  btn.innerText = 'Copied!';
-  setTimeout(() => { btn.innerText = 'Copy Table'; }, 1200);
-}
-
-function fallbackCopy(text, cb) {
-  const textarea = document.createElement('textarea');
-  textarea.value = text;
-  document.body.appendChild(textarea);
-  textarea.select();
-  document.execCommand('copy');
-  document.body.removeChild(textarea);
-  if (typeof cb === 'function') cb();
-  else feedbackCopySuccess();
-}
 
 function adjustTableMaxHeight(resultsDiv) {
   const wrapper = resultsDiv.querySelector('.scroll-table-wrapper');
@@ -852,18 +891,18 @@ function syncColWidths(resultsDiv) {
 }
 
 function copySqlInput() {
-  const textarea = document.getElementById('sqlInput');
-  // Guard: do nothing if empty
-  if (!textarea || (textarea.value || '').trim().length === 0) return;
-  const selectionStart = textarea.selectionStart;
-  const selectionEnd = textarea.selectionEnd;
-  const wasFocused = document.activeElement === textarea;
-  textarea.select();
+  const sqlInputArea = document.getElementById('sqlInput');
+  if (!sqlInputArea || (sqlInputArea.textContent || '').trim().length === 0) return; // Changed from value to innerText
+
+  // For contenteditable, select all content
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(sqlInputArea);
+  selection.removeAllRanges();
+  selection.addRange(range);
+
   document.execCommand('copy');
-  if (wasFocused) {
-    textarea.setSelectionRange(selectionStart, selectionEnd);
-    textarea.focus();
-  }
+  sqlInputArea.focus();
 
   const btn = document.getElementById('copySqlInputBtn');
   const copyIcon = btn.querySelector('.copy-icon');
@@ -888,8 +927,8 @@ function copySqlInput() {
 
 // Context menu for formatting SQL statement
 (function setupSqlContextMenu() {
-  const textarea = document.getElementById('sqlInput');
-  if (!textarea) return;
+  const sqlInputArea = document.getElementById('sqlInput');
+  if (!sqlInputArea) return;
 
   // Create the custom menu
   const menu = document.createElement('div');
@@ -910,7 +949,7 @@ function copySqlInput() {
   document.addEventListener('click', () => { menu.style.display = 'none'; });
   window.addEventListener('blur', () => { menu.style.display = 'none'; });
 
-  textarea.addEventListener('contextmenu', function (e) {
+  sqlInputArea.addEventListener('contextmenu', function (e) {
     e.preventDefault();
     menu.style.left = e.pageX + 'px';
     menu.style.top = e.pageY + 'px';
@@ -919,44 +958,10 @@ function copySqlInput() {
 
   menu.addEventListener('contextmenu', e => e.preventDefault());
 
+  // find the context menu click handler:
   menu.querySelector('#formatSqlMenuItem').addEventListener('click', function () {
     menu.style.display = 'none';
-    const input = textarea.value;
-    const selectionStart = textarea.selectionStart;
-    const selectionEnd = textarea.selectionEnd;
-
-    // If there is a selection, format all statements in it
-    if (selectionStart !== selectionEnd) {
-      const stmts = getSQLStmtsInSelection(input, selectionStart, selectionEnd);
-      if (!stmts.length) return;
-      const formattedBlocks = stmts.map(obj => formatSQL(obj.stmt));
-      // Preserve prefix and suffix
-      let prefix = input.slice(0, stmts[0].start);
-      if (prefix && !prefix.endsWith('\n')) prefix += '\n';
-      let suffix = input.slice(stmts[stmts.length - 1].end);
-      // Join formatted statements with double newline for clarity
-      const joined = formattedBlocks.join('\n\n');
-      textarea.value = prefix + joined + suffix;
-      textarea.selectionStart = prefix.length;
-      textarea.selectionEnd = prefix.length + joined.length;
-      textarea.focus();
-      return;
-    }
-
-    // Otherwise, format the statement at the cursor as before
-    const cursor = textarea.selectionStart;
-    const { stmt, start, end } = getSQLStmtAtCursor(input, cursor);
-    if (!stmt) return;
-    if (typeof formatSQL !== 'function') {
-      alert('SQL formatter not loaded.');
-      return;
-    }
-    let prefix = input.slice(0, start);
-    if (prefix && !prefix.endsWith('\n')) prefix += '\n';
-    const formatted = formatSQL(stmt);
-    textarea.value = prefix + formatted + input.slice(end);
-    textarea.selectionStart = textarea.selectionEnd = prefix.length + formatted.length;
-    textarea.focus();
+    if (window.formatCurrentSqlContext) formatCurrentSqlContext();
   });
 })();
 
@@ -979,7 +984,7 @@ function attachSqlInputResizeSync() {
   ta.style.removeProperty('height');      // let CSS height:30vh apply
   if (container) container.style.removeProperty('width'); // let inline-block shrink-wrap
 
-  // Make textarea the only resizable element
+  // Make sqlInputArea the only resizable element
   ta.style.maxWidth = '100%';
   ta.style.resize = 'both';
   ta.style.overflow = 'auto';
@@ -988,7 +993,7 @@ function attachSqlInputResizeSync() {
 }
 
 
-// Open: load a .sql/.txt file into the textarea
+// Open: load a .sql/.txt file into the sqlInputArea
 async function openSqlFile() {
   const ta = document.getElementById('sqlInput');
   if (!ta) return;
@@ -1005,6 +1010,7 @@ async function openSqlFile() {
       const file = await handle.getFile();
       _lastFileName = file.name;
       const text = await file.text();
+
       ta.value = text;
       ta.focus();
       ta.setSelectionRange(0, 0);
@@ -1051,7 +1057,7 @@ async function saveSqlAsFile() {
   const ta = document.getElementById('sqlInput');
   if (!ta) return false;
   const text = ta.value ?? '';
-  const suggestedName = (_lastFileHandle?.name) || _lastFileName || 'query.sql';
+  const suggestedName = (_lastFileHandle?.name) || _lastFileName || 'db2Query.sql';
 
   if (window.showSaveFilePicker && window.isSecureContext) {
     try {
@@ -1130,30 +1136,12 @@ if (modal) modal.addEventListener('click', (e) => {
   if (e.target === modal) closeEditHistoryModal();
 });
 
-// Attach textarea → controls width sync after UI is in the DOM
+// Attach sqlInputArea → controls width sync after UI is in the DOM
 attachSqlInputResizeSync();
 
-// Wire file Open/Save (no folder picker)
-const openBtn = document.getElementById('openSqlFileBtn');
-if (openBtn) {
-  openBtn.textContent = 'Open SQL File...';
-  openBtn.addEventListener('click', openSqlFile);
-}
-const saveBtn = document.getElementById('saveSqlBtn');
-if (saveBtn) {
-  saveBtn.textContent = 'Save';
-  saveBtn.addEventListener('click', async () => {
-    const ok = await saveSqlToCurrentFile();
-    if (!ok) await saveSqlAsFile();
-  });
-}
-const saveAsBtn = document.getElementById('saveSqlFileBtn');
-if (saveAsBtn) {
-  saveAsBtn.textContent = 'Save SQL as...';
-  saveAsBtn.addEventListener('click', saveSqlAsFile);
-}
 
-// Harden SQL textarea against unwanted features
+
+// Harden SQL sqlInputArea against unwanted features
 function hardenSqlTextarea() {
   const ta = document.getElementById('sqlInput');
   if (!ta) return;
@@ -1243,7 +1231,7 @@ function sizeResultsViewport() {
       const wrapper = resultsDiv?.querySelector('.scroll-table-wrapper');
       const tableEl = wrapper?.querySelector('#resultSetTable');
       if (resultsDiv && wrapper && tableEl) {
-        // Debounce to avoid thrashing while dragging the textarea resizer
+        // Debounce to avoid thrashing while dragging the sqlInputArea resizer
         if (!window._db2jsonAdjustDebounced) {
           window._db2jsonAdjustDebounced = debounced(100, () => {
             try { adjustPerPageToFit(resultsDiv, wrapper, tableEl); } catch { }
@@ -1357,3 +1345,145 @@ function adjustPerPageToFit(resultsDiv, wrapper, tableEl) {
   }
 }
 
+// Wire Format button (idempotent) – direct call, not via menuItem.click()
+(function wireFormatButton() {
+  function attempt() {
+    const btn = document.getElementById('formatSqlBtn');
+    if (!btn || btn._wired) return !!btn;
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (window.formatCurrentSqlContext) {
+        formatCurrentSqlContext();
+      } else {
+        console.warn('formatCurrentSqlContext not available yet.');
+      }
+    });
+    btn._wired = true;
+    return true;
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      if (!attempt()) setTimeout(attempt, 150); // retry if button injected late
+    });
+  } else {
+    if (!attempt()) setTimeout(attempt, 150);
+  }
+})();
+
+// === Clean Contenteditable Setup with <br> normalization ===
+(function initContenteditableHighlighting() {
+  const sqlInput = document.getElementById('sqlInput');
+  const codeEl = document.getElementById('sqlHighlight');
+
+  if (!sqlInput || !codeEl) {
+    console.warn('Missing sqlInput or sqlHighlight elements');
+    return;
+  }
+
+  // Remove any existing handlers to avoid duplicates
+  if (sqlInput._highlightWired) return;
+
+  function updateHighlight() {
+    // Use innerText to normalize <br>/<div> to \n across browsers
+    const text = sqlInput.innerText || '';
+    codeEl.textContent = text || ' ';
+
+    if (window.Prism && typeof Prism.highlightElement === 'function') {
+      try {
+        Prism.highlightElement(codeEl);
+      } catch (error) {
+        console.error('Prism highlight error:', error);
+      }
+    }
+
+    syncScroll();
+  }
+
+  function syncScroll() {
+    const highlightLayer = codeEl.parentElement;
+    if (highlightLayer) {
+      highlightLayer.scrollTop = sqlInput.scrollTop;
+      highlightLayer.scrollLeft = sqlInput.scrollLeft;
+    }
+  }
+
+  // Handle Enter manually - insert <br> instead of text node
+  console.log('Attaching keydown handler to sqlInput');
+
+ sqlInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+
+    // 1️⃣ Insert the spacer first
+    const spacer = document.createTextNode('\u200B');
+    range.insertNode(spacer);
+
+    // 2️⃣ Then insert the <br> *before* the spacer
+    const br = document.createElement('br');
+    spacer.parentNode.insertBefore(br, spacer);
+
+    // 3️⃣ Move caret after spacer (after the <br>)
+    range.setStartAfter(spacer);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    // 4️⃣ Update highlight
+    updateHighlight();
+  }
+});
+
+  // Single input event for all other changes
+  sqlInput.addEventListener('input', updateHighlight);
+  sqlInput.addEventListener('scroll', syncScroll);
+
+  // Clean up trailing whitespace when focus leaves
+  sqlInput.addEventListener('blur', () => {
+    const text = sqlInput.innerText || '';
+    const trimmed = text.replace(/\n+$/, '');
+    if (text !== trimmed) {
+      // Use innerText for setting too, to maintain consistency
+      const lines = trimmed.split('\n');
+      sqlInput.innerHTML = lines.map(line =>
+        line ? document.createTextNode(line).textContent : ''
+      ).join('<br>');
+      updateHighlight();
+    }
+  });
+
+  sqlInput._highlightWired = true;
+
+  // Initial setup
+  setTimeout(() => {
+    updateHighlight();
+    sqlInput.focus();
+
+    // Place cursor at end
+    const range = document.createRange();
+    const sel = window.getSelection();
+    const lastNode = sqlInput.lastChild || sqlInput;
+    if (lastNode.nodeType === Node.TEXT_NODE) {
+      range.setStart(lastNode, lastNode.textContent?.length || 0);
+    } else {
+      range.selectNodeContents(sqlInput);
+      range.collapse(false);
+    }
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }, 200);
+
+  console.log('Contenteditable highlighting initialized with auto-focus');
+})();
+
+// Add getSQLStmtAtCursor to any existing window assignments
+Object.assign(window, {
+  getSQLStmtAtCursor,
+  getSQLStmtsInSelection
+});

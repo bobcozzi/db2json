@@ -1,108 +1,143 @@
-// sqlHistoryUI.js
-// This file contains the dropdown resizing and wrapper sync logic for SQL history UI.
+// db2query_sqlHist.js
+// Updated to work with contenteditable SQL input (#sqlInput) instead of textarea
 
-// Helper: insert a history statement after the current SQL statement,
-// ensuring a terminating semicolon and newline if needed.
+const MAX_SQL_HISTORY = 640;
+const HISTORY_KEY = 'db2Query_RUNSQL_History';
+window.HISTORY_KEY = HISTORY_KEY;
+
+/* --- Caret helpers for contenteditable --- */
+function getCaretPosition(el) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return 0;
+  const range = sel.getRangeAt(0).cloneRange();
+  range.selectNodeContents(el);
+  range.setEnd(sel.getRangeAt(0).endContainer, sel.getRangeAt(0).endOffset);
+  return range.toString().length;
+}
+
+function setCaretPosition(el, pos) {
+  const sel = window.getSelection();
+  const range = document.createRange();
+  let charIndex = 0, nodeStack = [el], node, found = false;
+  while ((node = nodeStack.pop())) {
+    if (node.nodeType === 3) { // text node
+      const nextIndex = charIndex + node.length;
+      if (!found && pos >= charIndex && pos <= nextIndex) {
+        range.setStart(node, pos - charIndex);
+        range.collapse(true);
+        found = true;
+        break;
+      }
+      charIndex = nextIndex;
+    } else {
+      let i = node.childNodes.length;
+      while (i--) nodeStack.push(node.childNodes[i]);
+    }
+  }
+  if (found) {
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+}
+
+/* --- Insert statement at current cursor location --- */
 function insertHistoryStatement(stmt) {
-  const textarea = document.getElementById('sqlInput');
-  if (!textarea) return;
-  const input = textarea.value || '';
-  const cursor = (typeof textarea.selectionEnd === 'number') ? textarea.selectionEnd : input.length;
+  const editor = document.getElementById('sqlInput');
+  if (!editor || !stmt) return;
 
-  // Use app’s smarter parser if available
-  let start = cursor, end = cursor;
-  if (typeof window.getSQLStmtAtCursor === 'function') {
-    try {
-      const res = window.getSQLStmtAtCursor(input, cursor);
-      start = res?.start ?? cursor;
-      end   = res?.end   ?? cursor;
-    } catch {}
-  } else {
-    // Fallback: go to next semicolon or end of text
-    const nextSemi = input.indexOf(';', cursor);
-    end = (nextSemi >= 0) ? nextSemi + 1 : input.length;
+  const input = editor.textContent || '';
+
+  // Add semicolon if statement doesn't end with one
+  let finalStmt = stmt.trim();
+  if (finalStmt && !finalStmt.endsWith(';')) {
+    finalStmt += ';';
   }
 
-  let insertPos = end;
+  let newContent, caretPos;
 
-  // Determine if we need a separator before inserting:
-  // - If there is any non-whitespace before insertPos and the last non-ws char
-  //   is not ';', add ';\n'
-  // - If the last non-ws is ';', ensure at least one newline.
-  let i = insertPos - 1;
-  while (i >= 0 && /\s/.test(input[i])) i--;
-  const hasExistingContent = i >= 0 && input.slice(0, insertPos).trim().length > 0;
+  if (!input.trim()) {
+    // Empty input - just insert the statement
+    newContent = finalStmt;
+    caretPos = finalStmt.length;
+  } else {
+    // Use getSQLStmtAtCursor if available
+    const cursor = getCaretPosition(editor);
 
-  let sep = '';
-  if (hasExistingContent) {
-    if (input[i] === ';') {
-      const trailing = input.slice(i + 1, insertPos);
-      if (!/\n/.test(trailing)) sep = '\n';
+    if (typeof window.getSQLStmtAtCursor === 'function') {
+      // Use the helper function to get current statement info
+      const { stmt: currentStmt, start, end } = window.getSQLStmtAtCursor(input, cursor);
+
+      // Find the end of the current statement
+      let insertPos = end;
+      let separator = '';
+
+      // Check if we need to add a semicolon to the current statement
+      const textAtEnd = input.slice(Math.max(0, end - 1), end);
+      if (textAtEnd !== ';' && currentStmt.trim()) {
+        separator = ';\n';
+      } else {
+        separator = '\n';
+      }
+
+      // Build new content
+      const before = input.substring(0, insertPos);
+      const after = input.substring(insertPos);
+      newContent = before + separator + finalStmt + after;
+      caretPos = (before + separator + finalStmt).length;
     } else {
-      sep = ';\n';
+      // Fallback to current behavior if getSQLStmtAtCursor not available
+      const before = input.substring(0, cursor);
+      const after = input.substring(cursor);
+      let sep = '';
+      if (before.trim() && !before.trim().endsWith(';')) {
+        sep = '\n';
+      } else if (before.trim()) {
+        sep = '\n';
+      }
+      newContent = before + sep + finalStmt + after;
+      caretPos = (before + sep + finalStmt).length;
     }
   }
 
-  const before = input.slice(0, insertPos);
-  const after  = input.slice(insertPos);
-  const textToInsert = sep + stmt;
+  editor.textContent = newContent;
+  // Set caret INSIDE the inserted statement (before the semicolon)
+  if (typeof setCaretPosition === 'function') {
+    // Place caret before the semicolon of the inserted statement
+    const finalCaretPos = caretPos - 1; // Position before the trailing semicolon
+    setCaretPosition(editor, Math.max(0, finalCaretPos));
+  }
+  editor.focus();
 
-  textarea.value = before + textToInsert + after;
+  // Force highlighting refresh
+  if (window.refreshHighlight || typeof refreshHighlight === 'function') {
+    setTimeout(() => {
+      if (window.refreshHighlight) window.refreshHighlight();
+      else if (typeof refreshHighlight === 'function') refreshHighlight();
+    }, 10);
+  }
 
-  const caret = (before + textToInsert).length;
-  textarea.setSelectionRange(caret, caret);
-  textarea.focus();
+  const event = new Event('input', { bubbles: true });
+  editor.dispatchEvent(event);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  const textarea = document.getElementById('sqlInput');
-  const wrapper = textarea && textarea.closest('.sqlInput-copy-wrapper');
-  const dropdown = document.getElementById('sqlHistoryDropdown');
-
-  // Clear any legacy inline height that may remain from prior versions
-  if (wrapper) wrapper.style.height = '';
-
-  // Keep wrapper width in sync with textarea resize (do NOT force height)
-  if (textarea && wrapper) {
-    const syncWrapperSize = () => {
-      wrapper.style.width = textarea.offsetWidth + 'px';
-      // Don't force height; wrapper must grow to contain submit row, etc.
-      // wrapper.style.height = textarea.offsetHeight + 'px';
-    };
-    syncWrapperSize();
-    const observerWrap = new ResizeObserver(syncWrapperSize);
-    observerWrap.observe(textarea);
-    window.addEventListener('resize', syncWrapperSize);
+/* --- History storage & normalization --- */
+function normalizeSqlKey(input) {
+  if (!input) return '';
+  let s = String(input).replace(/;\s*$/, '').trim();
+  let inSingle = false, inDouble = false;
+  let out = '', prevSpace = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === "'" && !inDouble) { inSingle = !inSingle; out += ch; continue; }
+    if (ch === '"' && !inSingle) { inDouble = !inDouble; out += ch; continue; }
+    if (!inSingle && !inDouble) {
+      if (/\s/.test(ch)) { if (!prevSpace) { out += ' '; prevSpace = true; } }
+      else { out += ch.toLowerCase(); prevSpace = false; }
+    } else out += ch;
   }
+  return out.trim();
+}
 
-  // Keep dropdown width in sync with wrapper
-  if (wrapper && dropdown) {
-    const syncDropdownWidth = () => {
-      dropdown.style.width = wrapper.offsetWidth + 'px';
-    };
-    syncDropdownWidth();
-    const observerDropdown = new ResizeObserver(syncDropdownWidth);
-    observerDropdown.observe(wrapper);
-    window.addEventListener('resize', syncDropdownWidth);
-  }
-
-  // Use the smarter insertion logic; guard against double-wiring
-  if (dropdown && textarea && !dropdown._cursorInsertWired) {
-    dropdown.addEventListener('change', function () {
-      const val = dropdown.value;
-      if (!val) return;
-      insertHistoryStatement(val);
-      dropdown.selectedIndex = 0;
-    });
-    dropdown._cursorInsertWired = true;
-  }
-});
-
-// History constants (scoped here)
-const MAX_SQL_HISTORY = 512;
-const HISTORY_KEY = 'db2json_SQL_History';
-
-// Split SQL by semicolons not in quotes
 function splitSqlStatementsBySemicolon(input) {
   const out = [];
   let inSingle = false, inDouble = false, start = 0;
@@ -119,31 +154,6 @@ function splitSqlStatementsBySemicolon(input) {
   const last = input.slice(start).trim();
   if (last) out.push(last);
   return out;
-}
-
-// Case-insensitive, whitespace-normalized key (outside quotes only)
-function normalizeSqlKey(input) {
-  if (!input) return '';
-  let s = String(input).replace(/;\s*$/, '').trim(); // drop trailing semicolon
-  let inSingle = false, inDouble = false;
-  let out = '';
-  let prevSpace = false;
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i];
-    if (ch === "'" && !inDouble) { inSingle = !inSingle; out += ch; continue; }
-    if (ch === '"' && !inSingle) { inDouble = !inDouble; out += ch; continue; }
-    if (!inSingle && !inDouble) {
-      if (/\s/.test(ch)) {
-        if (!prevSpace) { out += ' '; prevSpace = true; }
-      } else {
-        out += ch.toLowerCase();
-        prevSpace = false;
-      }
-    } else {
-      out += ch; // keep case/spacing inside quotes
-    }
-  }
-  return out.trim();
 }
 
 function getSqlHistory() {
@@ -165,86 +175,56 @@ function getSqlHistory() {
   return arr;
 }
 
-// Skip duplicates anywhere in history (case-insensitive, space/semicolon agnostic)
 function saveSqlToHistory(stmt) {
   if (!stmt || typeof stmt !== 'string') return;
-  const s = stmt; // preserve original text
-  const key = normalizeSqlKey(s);
+  const key = normalizeSqlKey(stmt);
   let history = getSqlHistory();
-
-  // Remove any existing entry with the same normalized key
   history = history.filter(h => normalizeSqlKey(h) !== key);
-
-  // Insert the new statement at the top
-  history.unshift(s);
-
+  history.unshift(stmt);
   if (history.length > MAX_SQL_HISTORY) history = history.slice(0, MAX_SQL_HISTORY);
   try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch { }
 }
 
+/* --- Populate history dropdown --- */
 function populateSqlHistoryDropdown() {
   const dropdown = document.getElementById('sqlHistoryDropdown');
-  const actions = document.querySelector('.history-actions');
-  if (!dropdown) return;
-
-  const history = getSqlHistory();
-  dropdown.innerHTML = '';
-
-  const defaultOpt = document.createElement('option');
-  defaultOpt.value = '';
-  defaultOpt.textContent = history.length ? '-- Previous SQL statements --' : '-- No history yet --';
-  dropdown.appendChild(defaultOpt);
-  dropdown.disabled = history.length === 0;
-
-  if (actions) {
-    const edit = actions.querySelector('#editSqlHistoryBtn');
-    const clear = actions.querySelector('#clearSqlHistoryBtn');
-    if (edit) edit.disabled = false;
-    if (clear) clear.disabled = history.length === 0;
+  console.log('populateSqlHistoryDropdown called');
+  if (!dropdown) {
+    console.log('Dropdown not found');
+    return;
   }
-
-  // Fit labels to current width
-  let maxChars = 80;
-  const style = window.getComputedStyle(dropdown);
-  const fontSizePx = parseFloat(style.fontSize) || 14;
-  const avgChar = fontSizePx * 0.55;
-  const widthPx = dropdown.offsetWidth || 400;
-  maxChars = Math.max(20, Math.min(400, Math.floor(widthPx / avgChar)));
-
-  for (let idx = 0; idx < history.length; idx++) {
-    const stmt = history[idx];
+  const raw = localStorage.getItem(HISTORY_KEY);
+  console.log('Raw history from localStorage:', raw);
+  const history = JSON.parse(raw || '[]');
+  console.log('Parsed history:', history);
+  dropdown.innerHTML = '';
+  if (!history.length) {
+    console.log('No history found, adding "No history yet" option');
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'No SQL Stmt History yet';
+    opt.selected = true;
+    dropdown.appendChild(opt);
+    dropdown.disabled = true;
+    return;
+  }
+  dropdown.disabled = false;
+  // Add label option (make it selected and NOT disabled)
+  const labelOpt = document.createElement('option');
+  labelOpt.value = '';
+  labelOpt.textContent = 'Previous SQL Statements:';
+  labelOpt.selected = true;
+  dropdown.appendChild(labelOpt);
+  // Add history entries
+  history.forEach((stmt, idx) => {
+    console.log(`Adding history entry [${idx}]:`, stmt);
     const opt = document.createElement('option');
     opt.value = stmt;
-    const label = (stmt || '').replace(/\s+/g, ' ').trim();
-    opt.textContent = label.length > maxChars ? label.slice(0, maxChars - 3) + '...' : label;
-    if (idx === 0) opt.classList.add('last-stmt'); // highlight first
+    opt.textContent = stmt.length > 80 ? stmt.slice(0, 77) + '...' : stmt;
     dropdown.appendChild(opt);
-  }
-
-  // Attach one-time change listener if not already attached
-  if (dropdown && !dropdown._cursorInsertWired) {
-    dropdown.addEventListener('change', function () {
-      const textarea = document.getElementById('sqlInput');
-      if (!textarea) return;
-      const val = dropdown.value;
-      if (!val) return;
-      insertHistoryStatement(val);
-      dropdown.selectedIndex = 0;
-    });
-    dropdown._cursorInsertWired = true;
-  }
-
-  // Attach one-time resize observer to keep labels fitting
-  if (!dropdown._resizeObserverAttached) {
-    if (window.ResizeObserver) {
-      const ro = new ResizeObserver(() => populateSqlHistoryDropdown());
-      ro.observe(dropdown);
-      dropdown._resizeObserverAttached = true;
-    } else if (!dropdown._windowResizeHandlerAttached) {
-      window.addEventListener('resize', populateSqlHistoryDropdown);
-      dropdown._windowResizeHandlerAttached = true;
-    }
-  }
+  });
+  console.log('Dropdown options:', Array.from(dropdown.options).map(o => o.textContent));
+  console.log('Dropdown selectedIndex:', dropdown.selectedIndex);
 }
 
 function clearSqlHistory() {
@@ -263,10 +243,7 @@ function openEditHistoryModal() {
   modal.style.display = 'block';
   ta.focus();
   const escHandler = (e) => {
-    if (e.key === 'Escape') {
-      closeEditHistoryModal();
-      document.removeEventListener('keydown', escHandler);
-    }
+    if (e.key === 'Escape') { closeEditHistoryModal(); document.removeEventListener('keydown', escHandler); }
   };
   document.addEventListener('keydown', escHandler);
 }
@@ -290,22 +267,19 @@ function saveEditedHistory() {
   populateSqlHistoryDropdown();
 }
 
+/* --- Dedupe --- */
 function dedupeSqlHistoryCaseInsensitive() {
   let history = getSqlHistory();
   if (!Array.isArray(history) || history.length < 2) return { removed: 0, total: history?.length || 0 };
-
   const seen = new Set();
   const out = [];
   let removed = 0;
-
-  // Keep most-recent entries (history[0] is newest)
   for (const entry of history) {
     const key = normalizeSqlKey(entry);
     if (seen.has(key)) { removed++; continue; }
     seen.add(key);
     out.push(entry);
   }
-
   if (removed > 0) {
     try { localStorage.setItem(HISTORY_KEY, JSON.stringify(out)); } catch { }
     try { populateSqlHistoryDropdown(); } catch { }
@@ -313,39 +287,63 @@ function dedupeSqlHistoryCaseInsensitive() {
   return { removed, total: out.length };
 }
 
-// Keep these:
 function onHistoryDedupeClick() {
-  const res = window.dedupeSqlHistoryCaseInsensitive?.();
-  // Refresh textarea with updated history
+  const res = dedupeSqlHistoryCaseInsensitive();
   const ta = document.getElementById('historyTextarea');
   if (ta) {
     const history = getSqlHistory();
     ta.value = history.map(s => (s.endsWith(';') ? s : s + ';')).join('\n\n');
   }
-  const msg = res && res.removed
-    ? `Removed ${res.removed} duplicate${res.removed === 1 ? '' : 's'}`
-    : 'No duplicates found';
-  if (window.showToast) showToast(msg);
-  else alert(msg);
+  const msg = res && res.removed ? `Removed ${res.removed} duplicate${res.removed === 1 ? '' : 's'}` : 'No duplicates found';
+  if (window.showToast) showToast(msg); else alert(msg);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  const dedupeBtn = document.getElementById('historyDedupeBtn');
-  console.log('[sqlHist] DOMContentLoaded, dedupeBtn present:', !!dedupeBtn);
-  if (dedupeBtn && !dedupeBtn._wired) {
-    dedupeBtn.addEventListener('click', onHistoryDedupeClick);
-    dedupeBtn._wired = true;
-  }
-});
+/* --- DOM Wiring --- */
+const dedupeBtn = document.getElementById('historyDedupeBtn');
+if (dedupeBtn && !dedupeBtn._wired) {
+  dedupeBtn.addEventListener('click', onHistoryDedupeClick);
+  dedupeBtn._wired = true;
+}
 
-// Delegated fallback (keeps working if modal content is injected later)
-document.addEventListener('click', (e) => {
-  const btn = e.target && e.target.closest && e.target.closest('#historyDedupeBtn');
-  if (!btn) return;
-  onHistoryDedupeClick();
-});
+// Wrapper sizing
+const editor = document.getElementById('sqlInput');
+const wrapper = editor?.closest('.sqlInput-copy-wrapper');
+const dropdown = document.getElementById('sqlHistoryDropdown');
+if (editor && wrapper) {
+  const syncWrapper = () => wrapper.style.width = editor.offsetWidth + 'px';
+  syncWrapper();
+  const ro = new ResizeObserver(syncWrapper);
+  ro.observe(editor);
+  window.addEventListener('resize', syncWrapper);
+}
 
-// Expose as globals so existing calls in db2json.js continue to work
+if (wrapper && dropdown) {
+  const syncDropdown = () => dropdown.style.width = wrapper.offsetWidth + 'px';
+  syncDropdown();
+  const ro2 = new ResizeObserver(syncDropdown);
+  ro2.observe(wrapper);
+  window.addEventListener('resize', syncDropdown);
+}
+
+// Attach history dropdown event listener immediately
+const sqlHistoryDropdown = document.getElementById('sqlHistoryDropdown');
+if (sqlHistoryDropdown) {
+  sqlHistoryDropdown.addEventListener('change', function () {
+    // Ignore placeholder option (index 0)
+    if (this.selectedIndex === 0) {
+      console.log('Placeholder option selected (index 0), ignoring');
+      return;
+    }
+
+    const value = this.value;
+    if (value && value.trim()) {
+      console.log('History selected:', value);
+      insertHistoryStatement(value);
+    }
+  });
+}
+
+/* --- Expose globals --- */
 Object.assign(window, {
   getSqlHistory,
   saveSqlToHistory,
@@ -354,5 +352,6 @@ Object.assign(window, {
   openEditHistoryModal,
   closeEditHistoryModal,
   saveEditedHistory,
-  dedupeSqlHistoryCaseInsensitive
+  dedupeSqlHistoryCaseInsensitive,
+  insertHistoryStatement
 });

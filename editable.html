@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Contenteditable SQL Editor with Caret Preservation</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.css" rel="stylesheet" />
+<style>
+  :root {
+    --editor-font-size: 20px;
+    --editor-line-height: 24px;
+    --pad-vertical: 9px;
+    --pad-horizontal: 12px;
+  }
+
+  body {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    padding: 20px;
+  }
+
+  .sql-editor-wrapper {
+    position: relative;
+    border: 1px solid #888;
+    border-radius: 8px;
+    max-width: 800px;
+  }
+
+  #sqlEditor {
+    font-family: monospace;
+    font-size: var(--editor-font-size);
+    line-height: var(--editor-line-height);
+    padding: var(--pad-vertical) var(--pad-horizontal);
+    outline: none;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    min-height: 150px;
+    caret-color: #0b5ad9;
+  }
+
+  /* Prism tokens inherit font metrics */
+  #sqlEditor span.token {
+    font: inherit;
+    line-height: inherit;
+  }
+</style>
+</head>
+<body>
+
+<h2>Contenteditable SQL Editor Test</h2>
+
+<div class="sql-editor-wrapper">
+  <div id="sqlEditor" contenteditable="true" spellcheck="false" aria-label="SQL Editor"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+<script>
+  const editor = document.getElementById('sqlEditor');
+
+  // Escape HTML
+  function escapeHTML(str) {
+    return str.replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;");
+  }
+
+  // Save caret position as character offset
+  function saveCaret(container) {
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return 0;
+    const range = selection.getRangeAt(0);
+    const preCaretRange = range.cloneRange();
+    preCaretRange.selectNodeContents(container);
+    preCaretRange.setEnd(range.endContainer, range.endOffset);
+    return preCaretRange.toString().length;
+  }
+
+  // Restore caret from character offset
+  function restoreCaret(container, offset) {
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    let currentOffset = 0;
+    const nodeStack = [container];
+    let node, found = false;
+
+    while (nodeStack.length && !found) {
+      node = nodeStack.pop();
+      if (node.nodeType === 3) { // Text node
+        const nextOffset = currentOffset + node.length;
+        if (offset <= nextOffset) {
+          const range = document.createRange();
+          range.setStart(node, offset - currentOffset);
+          range.collapse(true);
+          selection.addRange(range);
+          found = true;
+        }
+        currentOffset = nextOffset;
+      } else if (node.nodeType === 1) { // Element
+        for (let i = node.childNodes.length - 1; i >= 0; i--) {
+          nodeStack.push(node.childNodes[i]);
+        }
+      }
+    }
+  }
+
+  // Highlight content while preserving caret
+  function highlight() {
+    const caretOffset = saveCaret(editor);
+    const rawText = editor.textContent;
+    editor.innerHTML = Prism.highlight(rawText, Prism.languages.sql, 'sql');
+    restoreCaret(editor, caretOffset);
+  }
+
+  editor.addEventListener('input', highlight);
+
+  // Optional: highlight initially
+  editor.textContent = "-- Type SQL here\nSELECT * FROM my_table;";
+  highlight();
+</script>
+
+</body>
+</html>

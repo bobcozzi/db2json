@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.14 - 16-OCT-2025
+- SQL Syntax Highlighting is incorporated into this relaase.
+- Host *SRVPGM has not changed for this release.
+- The web/html app name is now formall "RUNSQL Query for Web" while the host app remains DB2JSON.
+  - Some people perfer to call it "Db2 Query for Web" which is fine.
+- Mutli-statement support is incorporated into it. You can now specify statements separated by a semicolon. Those statements can:
+  - Span one or more lines (multi-line statements)
+  - Have more than one statement on a line (but why would you)
+  - Use the Format SQL option to reformat your SQL once you have it working
+
 ## 0.0.12 - 18-SEPT-2025
 - SQL History insertion UX:
   - Insert selected history item after the current statement (uses getSQLStmtAtCursor).

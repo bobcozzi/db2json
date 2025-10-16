@@ -7,18 +7,22 @@
     <title>Db2 Query: Bob Cozzi's Db2JSON Example HTML App</title>
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/simple-datatables@9.0.0/dist/style.css">
+
     <script src="https://cdn.jsdelivr.net/npm/simple-datatables@9.0.0" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-sql.min.js"></script>
 </head>
 
 <body>
-    <h1>Db2 Query for DB2JSON</h1>
+    <h1>Db2 Query RUNSQL for IBM i</h1>
+    <h3>Powered by Bob Cozzi&apos;s DB2JSON</h3>
     <form id="sqlForm" method="post" enctype="multipart/form-data" autocomplete="off" spellcheck="true">
         <div class="sql-label-row">
             <label for="sqlInput">Type SQL or select from history:</label>
-            <button type="submit" class="run-sql-btn" title="Run the SQL statement at the cursor">Run SQL</button>
+            <button type="button" class="run-sql-btn" title="Run the SQL statement at the cursor">Run SQL</button>
             <input type="hidden" id="submitMode" name="submitMode" value="POST_MULTIPART">
         </div>
-
+    </form>
         <div class="sqlInput-copy-wrapper">
             <div class="history-row">
                 <select id="sqlHistoryDropdown" title="SQL History"></select>
@@ -30,25 +34,45 @@
 
             <div class="sql-textarea-row">
                 <div class="textarea-btn-container">
-                    <textarea id="sqlInput" name="q" rows="6" cols="80" autocomplete="off" autocorrect="off"
-                        spellcheck="false" data-gramm="false" data-enable-grammarly="false"></textarea>
-
+                    <!-- Move toolbar FIRST -->
                     <div class="textarea-toolbar" role="toolbar" aria-label="SQL editor tools">
-                        <!-- Open -->
-                        <button id="openSqlFileBtn" type="button" class="tool-btn icon-open" title="Open SQL File..."
-                            aria-label="Open SQL File"></button>
+                        <!-- Open / Save / Save As buttons -->
+                        <div class="file-toolbar">
+                            <button id="openSqlFileBtn" type="button" class="icon-btn" aria-label="Open SQL File...">
+                                <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+                                    <path
+                                        d="M10 4l2 2h8a1 1 0 011 1v2H5V5a1 1 0 011-1h4zm12 6v8a1 1 0 01-1 1H7.2a1 1 0 01-.98-.8L4 10h18zm-11.5 2l-.5 5h2l.5-5h-2zm5 0l-.5 5h2l.5-5h-2z" />
+                                </svg>
+                                <span class="btn-label">Open</span>
+                            </button>
+                            <button id="saveSqlBtn" type="button" class="icon-btn" aria-label="Save">
+                                <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+                                    <path
+                                        d="M17 3H5a2 2 0 00-2 2v14c0 1.1.9 2 2 2h14a2 2 0 002-2V7l-4-4zm-3 16a3 3 0 01-6 0h6zm1-8H5V5h10v6z" />
+                                </svg>
+                                <span class="btn-label">Save</span>
+                            </button>
+                            <button id="saveSqlFileBtn" type="button" class="icon-btn" aria-label="Save SQL As...">
+                                <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+                                    <path
+                                        d="M17 3H5a2 2 0 00-2 2v14c0 1.1.9 2 2 2h6.5a5.5 5.5 0 014.6-8.7V7l-4-4zM9 11h6v2H9v-2zm0-4h6v2H9V7zm13 10.5a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+                                    <path d="M19.15 16.15l-2.65 2.65-1.15-1.15-.7.7 1.85 1.85 3.35-3.35-.7-.7z" />
+                                </svg>
+                                <span class="btn-label">Save As</span>
+                            </button>
+                        </div>
 
-                        <!-- Save -->
-                        <button id="saveSqlBtn" type="button" class="tool-btn icon-save" title="Save SQL to file"
-                            aria-label="Save" disabled></button>
-
-                        <!-- Save As -->
-                        <button id="saveSqlFileBtn" type="button" class="tool-btn icon-saveas" title="Save SQL as..."
-                            aria-label="Save SQL as"></button>
+                        <!-- Inside the .textarea-toolbar (near your file-toolbar) -->
+                        <button id="formatSqlBtn" type="button" class="icon-btn format-btn"
+                            title="Format SQL (Cmd/Ctrl+Shift+F)" aria-label="Format SQL">
+                            <svg viewBox="0 0 24 24" width="18" height="18" role="img" aria-hidden="true">
+                                <path d="M4 6h16v2H4zM8 11h12v2H8zM14 16h6v2h-6zM4 11h2v2H4zM4 16h2v2H4z" />
+                            </svg>
+                        </button>
 
                         <!-- Copy (original markup preserved for checkmark feedback) -->
                         <button id="copySqlInputBtn" type="button" class="tool-btn copy-sql-btn"
-                            title="Copy SQL to clipboard" aria-label="Copy SQL to clipboard">
+                            title="Copy SQL area to clipboard" aria-label="Copy SQL area to clipboard">
                             <span class="copy-icon-wrapper">
                                 <svg class="copy-icon tool-icon" width="20" height="20" viewBox="0 0 20 20" fill="none"
                                     xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
@@ -62,10 +86,18 @@
                             <span class="copy-sql-btn-label">Copy</span>
                         </button>
                     </div>
+
+                    <!-- Then wrapper -->
+                    <div class="sql-editor-wrapper">
+                        <pre class="sql-highlight-layer" aria-hidden="true"><code id="sqlHighlight" class="language-sql"></code></pre>
+                        <div id="sqlInput" class="sql-editor" contenteditable="true" spellcheck="false"
+                            autocomplete="off" autocorrect="off" role="textbox" aria-multiline="true"
+                            aria-label="SQL Editor" data-gramm="false" data-enable-grammarly="false" tabindex="0"></div>
+                    </div>
                 </div>
             </div>
         </div>
-    </form>
+
 
     <!-- Hidden file input for Open fallback (Firefox/Safari and non-secure contexts) -->
     <input id="sqlFileInput" type="file" accept=".sql,.txt" hidden />
@@ -128,6 +160,7 @@
     <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
 
     <script>
+
         // Place at bottom so DOM elements exist when assigning versioned URLs
         // Dev: append ?v=Date.now() automatically
         // Prod: omit ?v= to allow normal caching (or pass ?dev=1 to force busting)
@@ -144,7 +177,33 @@
             link.href = href;
             document.head.appendChild(link);
         }
+
+        function loadPrismTheme() {
+            // Remove any existing Prism theme link
+            let old = document.getElementById('prism-theme');
+            if (old) old.remove();
+
+            // Choose theme based on color scheme
+            const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const href = isDark
+                ? 'https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-okaidia.min.css'
+                : 'https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css';
+
+            // Dynamically add the theme link
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.id = 'prism-theme';
+            link.href = href;
+            document.head.appendChild(link);
+        }
+
+        // Load db2uqery.CSS first, then Prism themed css
+        loadPrismTheme();
         loadCss(withV('css/db2query.css'));
+
+
+        // Listen for color scheme changes
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', loadPrismTheme);
 
         function loadScript(src, cb) {
             const s = document.createElement('script');
@@ -153,9 +212,14 @@
             document.body.appendChild(s);
         }
 
-        loadScript(withV('js/db2query_sqlFmt.js'), () => {
-            loadScript(withV('js/db2query_sqlHist.js'), () => {
-                loadScript(withV('js/db2query.js'));
+        // Updated load chain to include db2query_data.js and db2query_copy.js
+        loadScript(withV('js/db2query_data.js'), () => {
+            loadScript(withV('js/db2query_copy.js'), () => {
+                loadScript(withV('js/db2query_sqlFmt.js'), () => {
+                    loadScript(withV('js/db2query_sqlHist.js'), () => {
+                        loadScript(withV('js/db2query.js'));
+                    });
+                });
             });
         });
     </script>
