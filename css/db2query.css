@@ -78,27 +78,11 @@ body {
   border: 1px solid #ddd;
   border-radius: 6px;
   background: var(--results-bg, #fff);
+  resize: vertical !important;  /* ADD: Allow vertical resizing */
+  min-height: 200px !important; /* ADD: Minimum height */
 }
 
-/* Remove conflicting wrapper block (was inline-block, max-content, 40vh, etc.) */
-/* DELETE or comment out this entire block if present:
-.results-area #results .scroll-table-wrapper {
-  display: inline-block;
-  width: max-content;
-  max-width: 100%;
-  box-sizing: border-box;
-  height: 40vh;
-  min-height: 160px;
-  max-height: calc(100dvh - var(--results-offset));
-  overflow: auto;
-  resize: vertical;
-  -webkit-overflow-scrolling: touch;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: #fff;
-}
-#results .scroll-table-wrapper { max-height: none; }
-*/
+
 
 /* Simple-DataTables inside our scroll wrapper */
 /* Use v9 lowercase class names */
@@ -177,7 +161,32 @@ td {
   color: red;
   margin-top: 1em;
 }
+.error-position-link {
+    background: none;
+    border: none;
+    color: #0066cc;
+    text-decoration: underline;
+    cursor: pointer;
+    font: inherit;
+    padding: 0;
+    margin: 0;
+}
 
+.error-position-link:hover {
+    color: #004499;
+    background: rgba(0, 102, 204, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+    .error-position-link {
+        color: #66b3ff;
+    }
+
+    .error-position-link:hover {
+        color: #99ccff;
+        background: rgba(102, 179, 255, 0.1);
+    }
+}
 /* The checkmark feedback is always present, but hidden by default. */
 /* Wrap icon and checkmark for overlay */
 .copy-icon-wrapper {
@@ -329,6 +338,30 @@ td {
 .run-sql-btn:focus {
   background: #d3e5ff;
   border-color: #6d9aff;
+}
+
+/* ADD to db2query.css after the .run-sql-btn styles around line 320: */
+
+.caret-position {
+    font-size: 0.75em;
+    color: #666;
+    background: #f8f8f8;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 2px 6px;
+    margin-left: 8px;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: default;
+}
+
+@media (prefers-color-scheme: dark) {
+    .caret-position {
+        color: #bbb;
+        background: #2d323c;
+        border-color: #444;
+    }
 }
 
 /* History actions (inline links style) */
@@ -735,55 +768,6 @@ td {
   /* inner wrapper scrolls */
 }
 
-/* Wrapper: this is the scroller */
-.scroll-table-wrapper {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
-  overflow-y: auto;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  background: var(--results-bg, #fff);
-}
-
-
-/* Simple-DataTables inside our scroll wrapper */
-/* Use v9 lowercase class names */
-#results .scroll-table-wrapper .datatable-container {
-  overflow: visible !important;
-  max-height: none !important;
-  padding-bottom: 44px;
-  /* avoid rows under pager */
-}
-
-/* Keep top/bottom bars participating in flow (not absolute) */
-#results .scroll-table-wrapper .datatable-bottom,
-#results .scroll-table-wrapper .datatable-top {
-  position: static !important;
-  background: none !important;
-  z-index: auto !important;
-}
-
-#results .scroll-table-wrapper .dataTable-container {
-  overflow: visible !important;
-  max-height: none !important;
-  padding-bottom: 44px;
-  /* avoid last rows hiding under sticky pager */
-}
-
-/* Keep pager/top visible inside the wrapper */
-#results .scroll-table-wrapper .dataTable-bottom {
-  position: static !important;
-  background: none !important;
-  z-index: auto !important;
-}
-
-#results .scroll-table-wrapper .dataTable-top {
-  position: static !important;
-  background: none !important;
-  z-index: auto !important;
-}
-
 /* If Simple-DataTables forces wrapping, neutralize it here */
 #results .scroll-table-wrapper .dataTable-table td {
   white-space: nowrap;
@@ -943,7 +927,7 @@ td {
 
   .sql-editor-wrapper #sqlInput,
   .sql-editor-wrapper pre.sql-highlight-layer {
-    caret-color: #8bb4ff;
+   caret-color: #ffffff !important; /* Pure white - maximum contrast */
   }
 }
 
@@ -964,7 +948,6 @@ td {
   font-size: 0; /* hide stray text */
   transition: background 0.2s, border-color 0.2s;
 }
-/* ADD these lines immediately AFTER line 963 (after the closing } of .textarea-toolbar .file-toolbar .icon-btn): */
 
 .textarea-toolbar .file-toolbar .icon-btn:hover {
   background: #e8e8e8 !important;  /* Darker gray - was #f2f2f2 */
@@ -975,18 +958,50 @@ td {
   background: #d8d8d8 !important;  /* Even darker when clicked */
 }
 
+/* === Universal button hover styles === */
+.textarea-toolbar .file-toolbar .icon-btn:hover,
 .icon-btn:hover,
 .tool-btn:hover,
 .copy-sql-btn:hover {
-  background: #e8e8e8 !important;  /* Darker gray - was #f2f2f2 */
+  background: #e8e8e8 !important;
   border-color: #ccc !important;
 }
 
+.textarea-toolbar .file-toolbar .icon-btn:active,
 .icon-btn:active,
 .tool-btn:active,
 .copy-sql-btn:active {
-  background: #d8d8d8 !important;  /* Darker when clicked */
+  background: #d8d8d8 !important;
 }
+
+/* Format button (sibling of .file-toolbar, not inside it) */
+.textarea-toolbar .icon-btn.format-btn,
+.textarea-toolbar button.icon-btn:not(.file-toolbar .icon-btn) {
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  line-height: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.textarea-toolbar .icon-btn.format-btn:hover,
+.textarea-toolbar button.icon-btn:not(.file-toolbar .icon-btn):hover {
+  background: #e8e8e8 !important;
+  border-color: #ccc !important;
+}
+
+.textarea-toolbar .icon-btn.format-btn:active,
+.textarea-toolbar button.icon-btn:not(.file-toolbar .icon-btn):active {
+  background: #d8d8d8 !important;
+}
+
 
 .sql-editor-wrapper {
   grid-row: 2;
@@ -1042,8 +1057,8 @@ td {
   border: none;
   outline: none;
   background: transparent;
-  color: #333; /* CHANGED: Use visible text color */
-  caret-color: #0b5ad9;
+  color: #333; /* Visible text color for light mode */
+  caret-color: #0b5ad9; /* Blue caret for light mode */
   font: inherit;
   line-height: inherit;
   white-space: pre-wrap;
@@ -1058,41 +1073,7 @@ td {
 @media (prefers-color-scheme: dark) {
   #sqlInput.sql-editor {
     color: #eee;
+    caret-color: #ffffff !important; /* White caret for dark mode */
     -webkit-text-fill-color: transparent;
   }
-}
-
-/* Format button (sibling of .file-toolbar, not inside it) */
-.textarea-toolbar .icon-btn.format-btn,
-.textarea-toolbar button.icon-btn:not(.file-toolbar .icon-btn) {
-  width: 28px;
-  height: 28px;
-  padding: 4px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  line-height: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  cursor: pointer;
-  transition: background 0.2s, border-color 0.2s;
-}
-
-.textarea-toolbar .icon-btn.format-btn:hover,
-.textarea-toolbar button.icon-btn:not(.file-toolbar .icon-btn):hover {
-  background: #e8e8e8 !important;  /* Darker gray - was #f2f2f2 */
-  border-color: #ccc !important;
-}
-
-.textarea-toolbar .icon-btn.format-btn:active,
-.textarea-toolbar button.icon-btn:not(.file-toolbar .icon-btn):active {
-  background: #d8d8d8 !important;  /* Darker when clicked */
-}
-
-/* Ensure SVG icons inside format button are sized correctly */
-.textarea-toolbar .icon-btn.format-btn svg {
-  width: 18px;
-  height: 18px;
-  fill: currentColor;
 }

@@ -162,7 +162,7 @@ function renderTable(json, resultsDiv) {
             searchable: true,
             fixedHeight: false,
             perPage: 25,
-            perPageSelect: [10, 15, 20, 25, 50, 100, 250],
+            perPageSelect: [10, 15, 20, 25, 50, 100, 250, 500],
             labels: {
                 placeholder: "Search...",
                 perPage: "rows per page",
@@ -177,5 +177,8 @@ function renderTable(json, resultsDiv) {
         tblname,
         libname
     });
+    window._lastRenderedColumns = columns;
+    window._lastRenderedRows = rows;
+    window.renderTable = renderTable;
 }
 

@@ -61,11 +61,10 @@ function insertHistoryStatement(stmt) {
     caretPos = finalStmt.length;
   } else {
     // Use getSQLStmtAtCursor if available
-    const cursor = getCaretPosition(editor);
 
     if (typeof window.getSQLStmtAtCursor === 'function') {
       // Use the helper function to get current statement info
-      const { stmt: currentStmt, start, end } = window.getSQLStmtAtCursor(input, cursor);
+      const { stmt: currentStmt, start, end } = window.getSQLStmtAtCursor(editor);
 
       // Find the end of the current statement
       let insertPos = end;

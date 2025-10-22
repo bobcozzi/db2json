@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.0.15 - 22-OCT-2025
+- Fixed an issue with copy/paste of the full table that was only copying the current page.
+- Made the caret (aka _cursor_) more visible in dark mode with bright white color for better contrast.
+- Corrected an issue with the ResultSet area user-enabled resize option.
+- Fixed toolbar button hover effects - all buttons (Open, Save, Save As, Format, Copy) now have consistent visual feedback when hovered.
+- Cleaned up duplicate CSS rules that were causing layout conflicts with the SQL syntax highlighting overlay.
+- Enhanced SQL input sanitization to automatically remove invisible Unicode characters (zero-width spaces, non-breaking spaces, etc.) that can break SQL parsing.
+- Improved DataTable container resizing - now properly responds to user resize actions and "entries per page" changes without requiring browser window resize.
+
 ## 0.0.14 - 16-OCT-2025
 - SQL Syntax Highlighting is incorporated into this relaase.
 - Host *SRVPGM has not changed for this release.

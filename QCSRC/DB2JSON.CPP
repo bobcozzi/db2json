@@ -556,6 +556,7 @@ void returnFailure(std::ostream& output, const char* message)
         output << json->COMMA << json->LF;
     }
 
+
     // output << json->LCURLY;
     output << json->LF
            << json->ERROR << json->COLON << json->LCURLY
@@ -564,10 +565,9 @@ void returnFailure(std::ostream& output, const char* message)
            << json->MSGTEXT << json->COLON
            << json->QUOTE << jsonEscape(msgtextStr) << json->QUOTE
            << json->RCURLY;
-   // if (g_rootOpen) {
-        output << json->LF << json->RCURLY << json->LF;
-        g_rootOpen = false;
-   // }
+
+    output << json->LF << json->RCURLY << json->LF;
+    g_rootOpen = false;
 }
 
 // Escape JSON special chars in strings

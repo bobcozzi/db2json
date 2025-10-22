@@ -121,10 +121,13 @@ function copyTableToClipboard(resultsDiv) {
     pipe: '|'
   }[document.getElementById('copyBtnOption')?.value || 'tab'];
 
-  // Try to use last rendered columns/rows if available
+  // Try to use full dataset if available
   const columns = window._lastRenderedColumns;
   const rows = window._lastRenderedRows;
-  if (Array.isArray(columns) && Array.isArray(rows)) {
+
+  if (Array.isArray(columns) && Array.isArray(rows) && rows.length > 0) {
+    console.log(`Copying full table: ${rows.length} rows, ${columns.length} columns`);
+
     let tsv = columns.join(delimiter) + '\n';
     rows.forEach(row => {
       const cells = columns.map(col => {
@@ -138,24 +141,36 @@ function copyTableToClipboard(resultsDiv) {
       });
       tsv += cells.join(delimiter) + '\n';
     });
+
     if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(tsv).then(() => feedbackCopySuccess());
+      navigator.clipboard.writeText(tsv).then(() => {
+        feedbackCopySuccess();
+        console.log('Full table copied to clipboard');
+      });
     } else {
-      fallbackCopy(tsv, feedbackCopySuccess);
+      fallbackCopy(tsv, () => {
+        feedbackCopySuccess();
+        console.log('Full table copied to clipboard (fallback)');
+      });
     }
     return;
   }
 
-  // Fallback: copy only visible rows
+  // Fallback: copy only visible rows (current page)
+  console.warn('Full dataset not available, copying visible rows only');
   const table = resultsDiv.querySelector('table');
   if (!table) return;
+
   let tsv = '';
   const headers = Array.from(table.querySelectorAll('thead th')).map(th =>
     th.innerText.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim()
   );
   tsv += headers.join(delimiter) + '\n';
 
-  table.querySelectorAll('tbody tr').forEach(tr => {
+  const visibleRows = table.querySelectorAll('tbody tr');
+  console.log(`Copying visible rows: ${visibleRows.length} rows`);
+
+  visibleRows.forEach(tr => {
     const cells = Array.from(tr.children).map(td =>
       (td.innerText ?? '').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim()
     );

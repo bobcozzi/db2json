@@ -253,7 +253,7 @@ window.formatCurrentSqlContext = function formatCurrentSqlContext() {
 
   // Single statement at caret
   const loc = (typeof window.getSQLStmtAtCursor === 'function')
-    ? window.getSQLStmtAtCursor(full, cursor)
+    ? window.getSQLStmtAtCursor(el)
     : { start: 0, end: full.length, stmt: full };
 
   if (!loc || !loc.stmt) return;

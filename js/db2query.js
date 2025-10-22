@@ -155,7 +155,8 @@ function initDb2jsonUI() {
   window._db2jsonInited = true;
 
   const sqlForm = document.getElementById('sqlForm');
-  const sqlInputArea = document.getElementById('sqlInput');
+  const sqlInput = document.getElementById('sqlInput');
+  const caretPosition = document.getElementById('caretPosition');
   const submitModeEncoding = document.getElementById('submitMode');
   const copySqlInputBtn = document.getElementById('copySqlInputBtn');
   const copyBtnRow = document.getElementById('copyBtnRow');
@@ -239,13 +240,27 @@ function initDb2jsonUI() {
   if (cancelBtn) cancelBtn.addEventListener('click', closeEditHistoryModal);
   if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) closeEditHistoryModal(); });
 
-  // sqlInputArea state and layout
-  if (sqlInputArea) {
-    sqlInputArea.addEventListener('input', updateCopySqlEnabled);
+  // sqlInput state and layout
+  if (sqlInput) {
+    sqlInput.addEventListener('input', updateCopySqlEnabled);
     updateCopySqlEnabled();
   }
   attachSqlInputResizeSync();
   hardenSqlTextarea();
+  // MOVE lines 2783-2799 to inside initDb2jsonUI() around line 205:
+
+  // Wire up caret position tracking
+
+  if (sqlInput && caretPosition) {
+    // Update position on various events
+    sqlInput.addEventListener('keyup', updateCaretPosition);
+    sqlInput.addEventListener('click', updateCaretPosition);
+    sqlInput.addEventListener('focus', updateCaretPosition);
+    sqlInput.addEventListener('input', updateCaretPosition);
+
+    // Initial position update
+    updateCaretPosition();
+  }
 
   // File Open/Save/Save As (non-destructive: keep existing SVG/img/icon markup)
   function wireFileButton(btn, { label, onClick }) {
@@ -292,6 +307,7 @@ function initDb2jsonUI() {
   if (typeof updateCopySqlEnabled === 'function') {
     updateCopySqlEnabled();
   }
+
 }
 
 // Initialize once DOM is ready
@@ -328,51 +344,72 @@ function escapeHTML(str) {
 }
 
 // Extracts the SQL statement at the cursor position, skipping quoted semicolons
-function getSQLStmtAtCursor(input, cursorPos) {
-  if (!input) return { stmt: '', start: 0, end: 0 };
 
-  // Clamp cursor position
-  cursorPos = Math.max(0, Math.min(input.length, cursorPos));
+function getSQLStmtAtCursor(element) {
+  // Extract text from element
+  const input = element.innerText || '';
+  const cursorPos = getAbsoluteCaretPosition(element);
 
-  // Find start - search backwards from cursor
-  let inSingle = false, inDouble = false;
-  let start = 0;
+  if (!input) return { stmt: '', start: 0, end: 0, cursorPos: cursorPos };
 
-  for (let i = cursorPos - 1; i >= 0; i--) {
+  let clampedCursorPos = Math.max(0, Math.min(input.length, cursorPos));
+
+  // Build an array of statement boundaries
+  let stmts = [];
+  let inSingle = false, inDouble = false, start = 0;
+  for (let i = 0; i < input.length; i++) {
     const c = input[i];
     if (c === "'" && !inDouble) inSingle = !inSingle;
     else if (c === '"' && !inSingle) inDouble = !inDouble;
     else if (c === ';' && !inSingle && !inDouble) {
+      stmts.push({ start, end: i + 1 });
       start = i + 1;
+    }
+  }
+  if (start < input.length) {
+    stmts.push({ start, end: input.length });
+  }
+
+  // Find which statement the caret is in (inclusive of start, exclusive of end)
+  let found = null;
+  for (const s of stmts) {
+    if (clampedCursorPos >= s.start && clampedCursorPos < s.end) {
+      found = s;
       break;
     }
   }
 
-  // Find end - search forwards from cursor
-  inSingle = false;
-  inDouble = false;
-  let end = input.length;
-
-  for (let i = cursorPos; i < input.length; i++) {
-    const c = input[i];
-    if (c === "'" && !inDouble) inSingle = !inSingle;
-    else if (c === '"' && !inSingle) inDouble = !inDouble;
-    else if (c === ';' && !inSingle && !inDouble) {
-      end = i + 1;
+  // If caret is at or past the end, only whitespace follows, and last non-whitespace is a semicolon, do not run anything
+  let onlyWhitespaceAfterCaret = true;
+  for (let i = clampedCursorPos; i < input.length; i++) {
+    if (!/\s/.test(input[i])) {
+      onlyWhitespaceAfterCaret = false;
       break;
     }
   }
+  let lastNonWsIdx = clampedCursorPos - 1;
+  while (lastNonWsIdx >= 0 && /\s/.test(input[lastNonWsIdx])) lastNonWsIdx--;
 
-  // Extract statement and trim
-  let stmt = input.slice(start, end).trim();
-
-  // Remove trailing semicolon for cleaner UX
-  if (stmt.endsWith(';')) {
-    stmt = stmt.slice(0, -1).trim();
+  if (
+    onlyWhitespaceAfterCaret &&
+    lastNonWsIdx >= 0 &&
+    input[lastNonWsIdx] === ';' &&
+    clampedCursorPos > lastNonWsIdx + 1
+  ) {
+    return { stmt: '', start: clampedCursorPos, end: clampedCursorPos, cursorPos: clampedCursorPos };
   }
 
-  return { stmt, start, end };
+  // If no statement found, return empty
+  if (!found) {
+    return { stmt: '', start: clampedCursorPos, end: clampedCursorPos, cursorPos: clampedCursorPos };
+  }
+
+  let stmt = input.slice(found.start, found.end).trim();
+  if (stmt.endsWith(';')) stmt = stmt.slice(0, -1).trim();
+
+  return { stmt, start: found.start, end: found.end, cursorPos: clampedCursorPos };
 }
+
 
 function getSQLStmtsInSelection(input, selectionStart, selectionEnd) {
   const selected = input.slice(selectionStart, selectionEnd);
@@ -407,11 +444,22 @@ function getSQLStmtsInSelection(input, selectionStart, selectionEnd) {
   return stmts;
 }
 
+function sanitizeInput(sqlStmt) {
+  return sqlStmt
+    .replace(/[\u200B-\u200D\uFEFF]/g, '') // Remove zero-width spaces, word joiners
+    .replace(/[\u2028\u2029]/g, ' ')       // Replace line/paragraph separators with spaces
+    .replace(/[\u00A0]/g, ' ')             // Replace non-breaking spaces with regular spaces
+    .trim();                               // Remove leading/trailing whitespace
+
+}
 async function handleSqlSubmit(e) {
   e.preventDefault();
-  const sqlInputArea = document.getElementById('sqlInput');
-  const input = sqlInputArea.textContent;
-  const cursor = getCaretPosition(sqlInputArea);
+  const sqlInput = document.getElementById('sqlInput');
+  let input = sqlInput.innerText || '';
+
+  // SANITIZE: Remove invisible Unicode characters that break SQL
+  input = sanitizeInput(input);
+
   const errorDiv = document.getElementById('error');
   const resultsDiv = document.getElementById('results');
   const copyBtnRow = document.getElementById('copyBtnRow');
@@ -426,14 +474,14 @@ async function handleSqlSubmit(e) {
   resultsDiv.innerHTML = '';
   if (copyBtnRow) copyBtnRow.classList.add('is-hidden');
 
-  const { stmt: query, start: start, end: end } = getSQLStmtAtCursor(input, cursor);
+  const { stmt: query, start: start, end: end } = getSQLStmtAtCursor(sqlInput);
 
   if (!query || query.trim() === '') {
     errorDiv.textContent = 'No statement selected';
     errorDiv.style.background = 'none';
     errorDiv.style.color = '#B71C1C';
     // === ADD FOCUS RESTORATION ===
-    sqlInputArea.focus();
+    sqlInput.focus();
     // === END ===
     return;
   }
@@ -470,7 +518,7 @@ async function handleSqlSubmit(e) {
       errorDiv.style.background = '#fff';
       errorDiv.style.color = '#B71C1C';
       // === ADD FOCUS RESTORATION ===
-      sqlInputArea.focus();
+      sqlInput.focus();
       // === END ===
       return;
     }
@@ -487,48 +535,43 @@ async function handleSqlSubmit(e) {
       errorDiv.style.background = '#fff';
       errorDiv.style.color = '#B71C1C';
       // === ADD FOCUS RESTORATION ===
-      sqlInputArea.focus();
+      sqlInput.focus();
       // === END ===
       return;
     }
 
     if (json.error) {
-      if (String(json.error.sqlstate).toUpperCase() != 'SYNTAX') {
+      if (String(json.error.sqlstate).toUpperCase() !== 'SYNTAX') {
         errorDiv.textContent = `SQLSTATE: ${json.error.sqlstate || 'ERROR'} - ${json.error.msgtext || 'An error occurred.'}`;
       } else {
         errorDiv.textContent = `SYNTAX ERROR at pos: ${json.error.msgtext || 'An error occurred.'}`;
+
+        // Try to move caret to error position
         const ta = document.getElementById('sqlInput');
         if (ta) {
           let pos = 0;
+          // Prefer explicit position field
           if (typeof json.error.position === 'number' && isFinite(json.error.position)) {
             pos = json.error.position;
           } else {
-            const m = String(json.error.msgtext || '').match(/^\s*(\d+)\s*,/);
+            // Fallback: try to extract from error message
+            const m = String(json.error.msgtext || '').match(/(?:position|pos)\s*:?\s*(\d+)/i);
             if (m) pos = parseInt(m[1], 10);
           }
 
-          let offset = start;
+          // Use the statement boundaries from getSQLStmtAtCursor
+          const { start, end } = getSQLStmtAtCursor(ta);
+
+          // Clamp position to statement length
           if (pos > 0) {
-            offset = Math.max(start, Math.min(end, start + (pos - 1)));
+            const absolutePos = start + (pos - 1); // 1-based to 0-based
+            moveCaretToPosition(ta, absolutePos + 1); // moveCaretToPosition expects 1-based
+            updateCaretPosition();
+            ta.focus();
           }
-
-          const { start: selStart, end: selEnd } = getNextSqlTokenRange(ta.value, offset, start, end);
-
-          ta.focus();
-          const range = document.createRange();
-          const textNode = ta.firstChild || ta;
-          const safeStart = Math.min(selStart, textNode.textContent?.length || 0);
-          const safeEnd = Math.min(selEnd, textNode.textContent?.length || 0);
-          range.setStart(textNode, safeStart);
-          range.setEnd(textNode, safeEnd);
-          const selection = window.getSelection();
-          selection.removeAllRanges();
-          selection.addRange(range);
         }
       }
-      // === ADD FOCUS RESTORATION ===
-      sqlInputArea.focus();
-      // === END ===
+      sqlInput.focus();
       return;
     }
 
@@ -536,7 +579,8 @@ async function handleSqlSubmit(e) {
     saveSqlToHistory(query);
     populateSqlHistoryDropdown();
 
-    renderTable(json, resultsDiv);
+    window.renderTable(json, resultsDiv);
+
     errorDiv.textContent = '';
     errorDiv.style.background = 'none';
     errorDiv.style.color = '#B71C1C';
@@ -550,14 +594,14 @@ async function handleSqlSubmit(e) {
     }
 
     // === ADD FOCUS RESTORATION AT END OF SUCCESS PATH ===
-    sqlInputArea.focus();
+    sqlInput.focus();
     // === END ===
   } catch (err) {
     errorDiv.textContent = err.message || 'Error running query.';
     errorDiv.style.background = 'none';
     errorDiv.style.color = '#B71C1C';
     // === ADD FOCUS RESTORATION ===
-    sqlInputArea.focus();
+    sqlInput.focus();
     // === END ===
   }
 }
@@ -588,9 +632,16 @@ function setWrapperHeight(wrapper, gapPx = 12) {
   const borBot = parseFloat(cs.borderBottomWidth) || 0;
   const chrome = padTop + padBot + borTop + borBot;
 
-  avail = Math.max(100, avail - chrome);
-  wrapper.style.height = avail + 'px';
+  avail = Math.max(200, avail - chrome); // Minimum 200px
+
+  // CHANGED: Only set maxHeight, let user control actual height
   wrapper.style.maxHeight = avail + 'px';
+
+  // CHANGED: Don't override user's height unless it's the first time
+  if (!wrapper.style.height || wrapper.style.height === 'auto') {
+    wrapper.style.height = Math.min(400, avail) + 'px'; // Default to 400px or available
+  }
+
   return avail;
 }
 
@@ -645,6 +696,8 @@ function renderTable(json, resultsDiv) {
 
   // Build HTML with a fixed ID
   let html = '<table id="resultSetTable" class="scroll-table"><colgroup></colgroup><thead><tr>';
+  window._lastRenderedColumns = columns;
+  window._lastRenderedRows = rows;
 
   const isRightAlignType = t => /^(DECIMAL|DEC|NUMERIC|DECFLOAT|ZONED|INT|INTEGER|SMALLINT|BIGINT|TINYINT|FLOAT|REAL|DOUBLE|DATE|TIME|TIMESTAMP)$/i.test(t);
 
@@ -719,10 +772,11 @@ function renderTable(json, resultsDiv) {
 
   const tableEl = wrapper.querySelector('#resultSetTable');
 
-  // Clean up previous instance
   if (resultsDiv._dt) {
-    try { resultsDiv._dt.destroy(); } catch { }
-    resultsDiv._dt = null;
+    // Wire user interaction detection
+    requestAnimationFrame(() => {
+      wireDataTableUserInteraction(wrapper, resultsDiv._dt);
+    });
   }
 
   // 2) Compute perPage BEFORE initializing DataTable (no inner scroll)
@@ -770,27 +824,8 @@ function renderTable(json, resultsDiv) {
         let v = Math.max(1, Math.floor(n));
         v = v - (v % 5); if (v < 5) v = 5;
         if (max && v > max) v = max;
-        if (!perPageSelect.includes(v)) perPageSelect = [...perPageSelect, v].sort((a, b) => a - b);
         return v;
       };
-      const finalPerPage = snap(estRows, totalRows);
-
-      resultsDiv._dt = new simpleDatatables.DataTable(tableEl, {
-        searchable: true,
-        perPage: finalPerPage,
-        perPageSelect
-      });
-
-      // Precisely fit perPage once bars exist
-      requestAnimationFrame(() => {
-        try { adjustPerPageToFit(resultsDiv, wrapper, tableEl); } catch { }
-      });
-
-      // Recompute on browser resize; avoid multiple handlers
-      if (resultsDiv._dtResizeHandler) {
-        window.removeEventListener('resize', resultsDiv._dtResizeHandler);
-        if (window.visualViewport) window.visualViewport.removeEventListener('resize', resultsDiv._dtResizeHandler);
-      }
       resultsDiv._dtResizeHandler = debounced(150, () => {
         try { adjustPerPageToFit(resultsDiv, wrapper, tableEl); } catch { }
       });
@@ -802,6 +837,7 @@ function renderTable(json, resultsDiv) {
   setResultsMeta({ rowsCount: rows.length, colsCount: columns.length, tblname, libname });
   document.getElementById('copyBtnRow')?.classList.remove('is-hidden');
   document.getElementById('resultsMeta')?.classList.remove('is-hidden');
+
 
   // Keep wrapper height correct after paint
   requestAnimationFrame(() => { try { sizeResultsViewport(); } catch { } });
@@ -889,18 +925,18 @@ function syncColWidths(resultsDiv) {
 }
 
 function copySqlInput() {
-  const sqlInputArea = document.getElementById('sqlInput');
-  if (!sqlInputArea || (sqlInputArea.textContent || '').trim().length === 0) return; // Changed from value to innerText
+  const sqlInput = document.getElementById('sqlInput');
+  if (!sqlInput || (sqlInput.textContent || '').trim().length === 0) return; // Changed from value to innerText
 
   // For contenteditable, select all content
   const selection = window.getSelection();
   const range = document.createRange();
-  range.selectNodeContents(sqlInputArea);
+  range.selectNodeContents(sqlInput);
   selection.removeAllRanges();
   selection.addRange(range);
 
   document.execCommand('copy');
-  sqlInputArea.focus();
+  sqlInput.focus();
 
   const btn = document.getElementById('copySqlInputBtn');
   const copyIcon = btn.querySelector('.copy-icon');
@@ -925,8 +961,8 @@ function copySqlInput() {
 
 // Context menu for formatting SQL statement
 (function setupSqlContextMenu() {
-  const sqlInputArea = document.getElementById('sqlInput');
-  if (!sqlInputArea) return;
+  const sqlInput = document.getElementById('sqlInput');
+  if (!sqlInput) return;
 
   // Variable to store cursor position when context menu opens
   let savedCursorPosition = 0;
@@ -950,11 +986,11 @@ function copySqlInput() {
   document.addEventListener('click', () => { menu.style.display = 'none'; });
   window.addEventListener('blur', () => { menu.style.display = 'none'; });
 
-  sqlInputArea.addEventListener('contextmenu', function (e) {
+  sqlInput.addEventListener('contextmenu', function (e) {
     e.preventDefault();
 
     // Save the current cursor position BEFORE showing menu
-    savedCursorPosition = getCaretPosition(sqlInputArea);
+    savedCursorPosition = getCaretPosition(sqlInput);
     console.log('Context menu opened, saved cursor position:', savedCursorPosition);
 
     menu.style.left = e.pageX + 'px';
@@ -969,12 +1005,12 @@ function copySqlInput() {
     console.log('Format menu clicked');
     menu.style.display = 'none';
 
-    // Restore focus to sqlInputArea
-    sqlInputArea.focus();
+    // Restore focus to sqlInput
+    sqlInput.focus();
 
     // Restore cursor position
     if (savedCursorPosition > 0) {
-      setCaretPosition(sqlInputArea, savedCursorPosition);
+      setCaretPosition(sqlInput, savedCursorPosition);
       console.log('Restored cursor position to:', savedCursorPosition);
     }
 
@@ -992,7 +1028,9 @@ function copySqlInput() {
 
 function attachSqlInputResizeSync() {
   // Tear down any previous observers/listeners
+
   if (window._db2jsonRO && window._db2jsonRO.disconnect) window._db2jsonRO.disconnect();
+
   window._db2jsonRO = null;
   if (window._db2jsonWinResize) {
     window.removeEventListener('resize', window._db2jsonWinResize);
@@ -1008,7 +1046,7 @@ function attachSqlInputResizeSync() {
   ta.style.removeProperty('height');      // let CSS height:30vh apply
   if (container) container.style.removeProperty('width'); // let inline-block shrink-wrap
 
-  // Make sqlInputArea the only resizable element
+  // Make sqlInput the only resizable element
   ta.style.maxWidth = '100%';
   ta.style.resize = 'both';
   ta.style.overflow = 'auto';
@@ -1017,7 +1055,7 @@ function attachSqlInputResizeSync() {
 }
 
 
-// Open: load a .sql/.txt file into the sqlInputArea
+// Open: load a .sql/.txt file into the sqlInput
 async function openSqlFile() {
   const ta = document.getElementById('sqlInput');
   if (!ta) return;
@@ -1160,12 +1198,12 @@ if (modal) modal.addEventListener('click', (e) => {
   if (e.target === modal) closeEditHistoryModal();
 });
 
-// Attach sqlInputArea → controls width sync after UI is in the DOM
+// Attach sqlInput → controls width sync after UI is in the DOM
 attachSqlInputResizeSync();
 
 
 
-// Harden SQL sqlInputArea against unwanted features
+// Harden SQL sqlInput against unwanted features
 function hardenSqlTextarea() {
   const ta = document.getElementById('sqlInput');
   if (!ta) return;
@@ -1255,7 +1293,7 @@ function sizeResultsViewport() {
       const wrapper = resultsDiv?.querySelector('.scroll-table-wrapper');
       const tableEl = wrapper?.querySelector('#resultSetTable');
       if (resultsDiv && wrapper && tableEl) {
-        // Debounce to avoid thrashing while dragging the sqlInputArea resizer
+        // Debounce to avoid thrashing while dragging the sqlInput resizer
         if (!window._db2jsonAdjustDebounced) {
           window._db2jsonAdjustDebounced = debounced(100, () => {
             try { adjustPerPageToFit(resultsDiv, wrapper, tableEl); } catch { }
@@ -1339,7 +1377,8 @@ function adjustPerPageToFit(resultsDiv, wrapper, tableEl) {
     const dt = resultsDiv?._dt;
     if (!dt || !wrapper || !tableEl) return;
 
-    const avail = setWrapperHeight(wrapper, 12);
+    // CHANGED: Use actual wrapper height (user may have resized it)
+    const wrapperHeight = wrapper.offsetHeight || 400;
 
     const { topH, botH, headH, rowH } = measureHeights(wrapper, tableEl);
     const safeRowH = Number.isFinite(rowH) && rowH > 0 ? rowH : 24;
@@ -1348,24 +1387,49 @@ function adjustPerPageToFit(resultsDiv, wrapper, tableEl) {
     const safeHead = Number.isFinite(headH) ? headH : 0;
 
     const fudge = 2;
-    const bodyAvail = Math.max(0, avail - safeTop - safeBot - safeHead - fudge);
+    const bodyAvail = Math.max(0, wrapperHeight - safeTop - safeBot - safeHead - fudge);
     let rowsThatFit = Math.floor(bodyAvail / safeRowH);
     if (!Number.isFinite(rowsThatFit) || rowsThatFit <= 0) rowsThatFit = 5;
 
     const totalRows = tableEl.tBodies[0]?.rows?.length || 0;
     const { v: perPage, perPageSelect } = snapPerPage(rowsThatFit, totalRows);
 
-    if (perPage !== dt.options.perPage) {
+    // CHANGED: Only auto-adjust if user hasn't manually changed perPage
+    const currentPerPage = dt.options.perPage;
+    const userChangedPerPage = wrapper.dataset.userSetPerPage === 'true';
+
+    if (!userChangedPerPage && perPage !== currentPerPage) {
       dt.options.perPage = perPage;
       if (Array.isArray(perPageSelect)) dt.options.perPageSelect = perPageSelect;
       if (typeof dt.setPage === 'function') dt.setPage(1);
       if (typeof dt.update === 'function') dt.update();
-    }
 
-    // Keep the dropdown in sync without firing change (avoids plugin re-read glitches)
-    sanitizePerPageDropdown(wrapper, perPage);
+      // Keep the dropdown in sync
+      sanitizePerPageDropdown(wrapper, perPage);
+    }
   } finally {
     requestAnimationFrame(() => { adjustPerPageToFit._running = false; });
+  }
+}
+
+// Detect when user manually changes entries per page:
+
+function wireDataTableUserInteraction(wrapper, dt) {
+  const dropdown = wrapper.querySelector('.datatable-dropdown select') ||
+    wrapper.querySelector('.dataTable-dropdown select');
+
+  if (dropdown && !dropdown._wiredUserChange) {
+    dropdown.addEventListener('change', () => {
+      // Mark that user manually changed perPage
+      wrapper.dataset.userSetPerPage = 'true';
+
+      // Reset this flag after a delay (user finished interacting)
+      clearTimeout(wrapper._resetUserFlag);
+      wrapper._resetUserFlag = setTimeout(() => {
+        wrapper.dataset.userSetPerPage = 'false';
+      }, 5000);
+    });
+    dropdown._wiredUserChange = true;
   }
 }
 
@@ -1505,6 +1569,167 @@ function adjustPerPageToFit(resultsDiv, wrapper, tableEl) {
 
   console.log('Contenteditable highlighting initialized with auto-focus');
 })();
+
+
+function updateCaretPosition() {
+  const sqlInput = document.getElementById('sqlInput');
+  const caretPos = document.getElementById('caretPosition');
+  if (!sqlInput || !caretPos) return;
+
+  try {
+    const absolutePosition = getCaretPosition(sqlInput);
+    caretPos.textContent = `Pos: ${absolutePosition}`;
+    caretPos.title = `Absolute position: ${absolutePosition}`;
+  } catch (e) {
+    caretPos.textContent = 'Pos: ?';
+    caretPos.title = 'Unable to determine cursor position';
+  }
+}
+
+function getAbsoluteCaretPosition(element) {
+  if (!element) return 0;
+
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return 0;
+
+  const range = selection.getRangeAt(0);
+  const preCaretRange = range.cloneRange();
+  preCaretRange.selectNodeContents(element);
+  preCaretRange.setEnd(range.endContainer, range.endOffset);
+
+  // This gives the absolute offset (character count) from the start of the input
+  return preCaretRange.toString().length;
+}
+
+// Enhanced getCaretPosition function for contenteditable
+function getCaretPosition(element) {
+  if (!element) return 1; // Fix: show 1 for empty input
+
+  const selection = window.getSelection();
+  if (!selection.rangeCount) return 1;
+
+  const range = selection.getRangeAt(0);
+  const preCaretRange = range.cloneRange();
+  preCaretRange.selectNodeContents(element);
+  preCaretRange.setEnd(range.endContainer, range.endOffset);
+
+  const textBeforeCaret = preCaretRange.toString();
+  const lastLineBreak = textBeforeCaret.lastIndexOf('\n');
+  let position = textBeforeCaret.length - lastLineBreak;
+
+  // Fix: If position is 0, show 1
+  return position > 0 ? position : 1;
+}
+
+// Function to move caret to specific position
+function moveCaretToPosition(element, targetPos) {
+  if (!element || targetPos < 1) return false;
+
+  // Convert 1-based position to 0-based
+  const pos = targetPos - 1;
+
+  const walker = document.createTreeWalker(
+    element,
+    NodeFilter.SHOW_ALL, // Show all nodes including BR
+    null,
+    false
+  );
+
+  let currentPos = 0;
+  let node;
+  let lastTextNode = null;
+
+  while (node = walker.nextNode()) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const nodeLength = node.textContent.length;
+
+      if (currentPos + nodeLength >= pos) {
+        // Position is within this text node
+        const range = document.createRange();
+        const selection = window.getSelection();
+
+        range.setStart(node, Math.max(0, pos - currentPos));
+        range.collapse(true);
+
+        selection.removeAllRanges();
+        selection.addRange(range);
+
+        element.focus();
+        return true;
+      }
+
+      currentPos += nodeLength;
+      lastTextNode = node;
+
+    } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'BR') {
+      if (currentPos === pos) {
+        // Position is exactly at the BR
+        const range = document.createRange();
+        const selection = window.getSelection();
+
+        range.setStartAfter(node);
+        range.collapse(true);
+
+        selection.removeAllRanges();
+        selection.addRange(range);
+
+        element.focus();
+        return true;
+      }
+
+      currentPos += 1; // Count BR as 1 character
+    }
+  }
+
+  // If position is beyond content, place at end
+  const range = document.createRange();
+  const selection = window.getSelection();
+
+  if (lastTextNode) {
+    range.setStart(lastTextNode, lastTextNode.textContent.length);
+  } else {
+    range.selectNodeContents(element);
+    range.collapse(false);
+  }
+
+  selection.removeAllRanges();
+  selection.addRange(range);
+  element.focus();
+
+  return false;
+}
+
+// Enhanced jump function that works within current statement
+function jumpToStatementPosition(stmtPosition) {
+  const sqlInput = document.getElementById('sqlInput');
+  if (!sqlInput || !window._currentStmtInfo) return false;
+
+  const { start } = window._currentStmtInfo;
+  // Convert statement-relative position to absolute position
+  const absolutePosition = start + stmtPosition;
+
+  return moveCaretToPosition(sqlInput, absolutePosition);
+}
+
+
+
+function displayError(message) {
+  const errorDiv = document.getElementById('error');
+  if (!errorDiv) return;
+
+  // Make "position 21" clickable to jump there
+  const positionRegex = /(?:position|pos)\s*:?\s*(\d+)/i;
+  const match = message.match(positionRegex);
+
+  if (match) {
+    const position = parseInt(match[1], 10);
+    errorDiv.innerHTML = message.replace(match[0],
+      `<button class="error-position-link" onclick="jumpToPosition(${position})" title="Click to jump to position ${position}">${match[0]}</button>`
+    );
+  } else {
+    errorDiv.textContent = message;
+  }
+}
 
 // Add getSQLStmtAtCursor to any existing window assignments
 Object.assign(window, {
